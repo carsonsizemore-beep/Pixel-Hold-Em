@@ -1,0 +1,2622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Pixel Hold'em</title>
+    <style>
+        :root {
+            --safe-bottom: env(safe-area-inset-bottom, 20px);
+            --bg-color: #222;
+            --text-color: #eee;
+            --accent-color: #e74c3c;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            border: 4px solid #444;
+            background-color: #1a1a1a;
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            justify-content: center;
+        }
+
+        canvas {
+            image-rendering: pixelated;
+            width: 100%;
+            height: auto;
+            aspect-ratio: 320/280;
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        /* --- Controls Layout --- */
+        .controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            width: 100%;
+            max-width: 800px;
+            padding: 10px;
+            padding-bottom: calc(10px + var(--safe-bottom));
+            box-sizing: border-box;
+            transition: opacity 0.3s;
+        }
+
+        .player-controls, .phase-controls {
+            display: flex;
+            gap: 8px;
+            background: #333;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid #555;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* --- Bet Selector --- */
+        .bet-selector {
+            display: flex;
+            align-items: center;
+            background: #222;
+            border: 2px solid #444;
+            border-radius: 4px;
+            padding: 2px;
+        }
+
+        .bet-display {
+            min-width: 50px;
+            text-align: center;
+            font-weight: bold;
+            color: #f1c40f;
+            font-size: 18px;
+            margin: 0 4px;
+        }
+
+        /* --- Buttons --- */
+        button {
+            background: var(--accent-color);
+            border: 4px solid #c0392b;
+            color: white;
+            font-family: inherit;
+            font-size: 16px;
+            padding: 0 16px;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #962d22;
+            transition: transform 0.1s;
+            text-transform: uppercase;
+            font-weight: bold;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: manipulation;
+        }
+
+        button:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #962d22;
+        }
+
+        button:disabled {
+            background: #444;
+            border-color: #555;
+            color: #777;
+            box-shadow: none;
+            transform: translateY(4px);
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        /* Button Variants */
+        button.fold-btn { background: #7f8c8d; border-color: #95a5a6; color: #2c3e50; box-shadow: 0 4px 0 #566573; }
+        button.confirm-btn { background: #2ecc71; border-color: #27ae60; box-shadow: 0 4px 0 #1e8449; color: #fff; min-width: 60px; }
+        button.joker-btn { background: #9b59b6; border-color: #8e44ad; box-shadow: 0 4px 0 #6c3483; color: #fff; }
+        button.mode-btn { background: #f39c12; border-color: #d35400; box-shadow: 0 4px 0 #a04000; color: #fff; display: none; }
+        
+        button.adjust-btn {
+            background: #3498db;
+            border-color: #2980b9;
+            box-shadow: 0 4px 0 #1a5276;
+            font-size: 24px;
+            width: 48px;
+            padding: 0;
+        }
+
+        button.joker-btn.active {
+            background: #e91e63;
+            border-color: #c2185b;
+            box-shadow: 0 4px 0 #880e4f;
+            animation: pulse 2s infinite;
+        }
+
+        /* Utility Buttons */
+        .utility-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            box-shadow: none;
+            color: #fff;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            padding: 0;
+            min-height: unset;
+            font-size: 18px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            z-index: 100;
+        }
+        .utility-btn:hover { background: rgba(255, 255, 255, 0.2); border-color: #fff; }
+
+        /* --- Helpers & Animations --- */
+        .hints {
+            font-size: 11px;
+            color: #888;
+            width: 100%;
+            text-align: center;
+            margin-top: 5px;
+            min-height: 15px;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(233, 30, 99, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(233, 30, 99, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(233, 30, 99, 0); }
+        }
+
+        /* --- Mobile Responsiveness --- */
+        @media (max-width: 600px) {
+            .controls { gap: 8px; padding: 5px; padding-bottom: var(--safe-bottom); }
+            .player-controls, .phase-controls { width: 100%; justify-content: space-between; }
+            
+            button { font-size: 14px; }
+            button.fold-btn { flex-grow: 1; }
+            button.confirm-btn { flex-grow: 2; }
+            
+            .bet-selector { flex-grow: 1; justify-content: center; }
+            .bet-display { font-size: 15px; min-width: 40px; }
+
+            #dealBtn { flex-grow: 2; height: 50px; font-size: 16px; }
+            #jokerBtn, #p2ModeBtn { flex-grow: 1; font-size: 11px; padding: 0 4px; }
+            button.adjust-btn { font-size: 20px; width: 40px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <button id="infoBtn" class="utility-btn">i</button>
+        <canvas id="gameCanvas" width="320" height="280"></canvas>
+    </div>
+
+    <div class="controls">
+        <div class="player-controls">
+            <button id="foldBtn" class="fold-btn">FOLD</button>
+            <div class="bet-selector">
+                <button id="betMinusBtn" class="adjust-btn">-</button>
+                <span id="betDisplay" class="bet-display">CHECK</span>
+                <button id="betPlusBtn" class="adjust-btn">+</button>
+            </div>
+            <button id="confirmBtn" class="confirm-btn">✓</button>
+        </div>
+
+        <div class="phase-controls">
+            <button id="p2ModeBtn" class="mode-btn">P2: CPU</button>
+            <button id="jokerBtn" class="joker-btn">JOKER: OFF</button>
+            <button id="dealBtn">DEAL</button>
+        </div>
+        
+        <div class="hints" id="hintText">
+            [SPACE] Deal/Confirm • [Q] Peek P1 • [P] Peek P2
+        </div>
+    </div>
+
+<script>
+/**
+ * PIXEL ART POKER - Refactored v76 (Fixed Hand Evaluation)
+ * Cleaner code structure, same classic pixel feel.
+ */
+
+// --- Canvas Setup ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- DOM Elements ---
+const UI = {
+    dealBtn: document.getElementById('dealBtn'),
+    foldBtn: document.getElementById('foldBtn'),
+    betMinus: document.getElementById('betMinusBtn'),
+    betPlus: document.getElementById('betPlusBtn'),
+    confirmBtn: document.getElementById('confirmBtn'),
+    betDisplay: document.getElementById('betDisplay'),
+    jokerBtn: document.getElementById('jokerBtn'),
+    infoBtn: document.getElementById('infoBtn'),
+    p2ModeBtn: document.getElementById('p2ModeBtn'),
+    controls: document.querySelector('.controls')
+};
+
+// --- Constants ---
+const CONSTANTS = {
+    SCREEN_W: 320,
+    SCREEN_H: 280,
+    CARD_W: 22,
+    CARD_H: 33,
+    P_CARD_W: 30,
+    P_CARD_H: 45
+};
+
+const COLORS = {
+    bg: '#1a1a1a',
+    table: '#2ecc71',
+    tableDark: '#27ae60',
+    tableOutline: '#1e8449',
+    white: '#ecf0f1',
+    red: '#e74c3c',
+    blue: '#3498db',
+    black: '#2c3e50',
+    gold: '#ffff66',
+    goldDark: '#ffd700',
+    skin: '#e0ac69',
+    skinDark: '#b88a52',
+    disabled: '#95a5a6',
+    cigar: '#8d6e63',
+    ash: '#9e9e9e',
+    ember: '#ff5722'
+};
+
+// --- Slot Data ---
+const SLOT_SYMBOLS = ['🍒', '7️⃣', '💎', '🔔', '🍇'];
+
+// --- Game Data ---
+const SUITS = ['♥', '♦', '♣', '♠'];
+const VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+const HAND_RANKS = [
+    "Royal Flush", "Straight Flush", "Four of a Kind", "Full House", 
+    "Flush", "Straight", "Three of a Kind", "Two Pair", "Pair", "High Card"
+];
+
+const JOKERS = [
+    { id: 'j1', number: '1', name: 'MIDAS', color: '#ffd700', desc: 'POT +15' },
+    { id: 'j2', number: '2', name: 'SEER', color: '#9b59b6', desc: 'ALL HANDS REVEALED' },
+    { id: 'j3', number: '3', name: 'GIFT', color: '#2ecc71', desc: 'ALL PLAYERS +7g' },
+    { id: 'j4', number: '4', name: 'CHAOS', color: '#e74c3c', desc: 'HANDS ROTATE LEFT' }
+];
+
+// --- Game State ---
+let gameState = {
+    p1Gold: 20, p2Gold: 20, cpuGold: 20,
+    pot: 0,
+    phase: 'MENU',
+    deck: [],
+    p1Hand: [], p2Hand: [], cpuHand: [], communityCards: [],
+    activePlayer: null,
+    currentStreetBet: 0,
+    playerBets: { p1: 0, p2: 0, cpu: 0 },
+    raisesThisRound: { p1: 0, p2: 0, cpu: 0 },
+    folded: { p1: false, p2: false, cpu: false },
+    aiTimer: 0,
+    isP2Human: false,
+    draftBet: 0,
+    animations: [],
+    message: "PRESS DEAL",
+    winningHandDescription: "",
+    activeJokers: [],
+    dealerEyeDir: 0,
+    dealerEyeTimer: 100,
+    dealerReaction: null,
+    dealerReactionTimer: 0,
+    dealing: false,
+    cigarMode: false,
+    smokeParticles: [],
+    bgParticles: [],
+    confetti: [],
+    jokerMode: false,
+    revealAllHands: false,
+    infoOpen: false,
+    
+    // Slots State
+    slotsOpen: false,
+    slotReels: [0, 0, 0],        // Current visible symbols
+    slotTargetReels: [0, 0, 0],  // Where they will stop
+    slotReelTimers: [0, 0, 0],   // Countdown for each reel
+    slotSpinning: false,
+    slotMessage: "COST: 1g",
+    slotPayouts: { '🍒': 1, '🍇': 2, '🔔': 3, '💎': 5, '7️⃣': 10 }
+};
+
+const keys = { q: false, p: false };
+let p1PeekTimer = null;
+let p2PeekTimer = null;
+let p1RegionTouched = false; 
+let p2RegionTouched = false;
+
+// --- Offscreen Canvases (Caching) ---
+const bgCache = document.createElement('canvas');
+bgCache.width = CONSTANTS.SCREEN_W;
+bgCache.height = CONSTANTS.SCREEN_H;
+const bgCacheCtx = bgCache.getContext('2d');
+
+const chipCache = document.createElement('canvas');
+chipCache.width = 20;
+chipCache.height = 20;
+const chipCacheCtx = chipCache.getContext('2d');
+let assetsCached = false;
+
+
+// ==========================================
+// AUDIO ENGINE
+// ==========================================
+const AudioEngine = {
+    ctx: null,
+    isPlaying: false,
+    beatDur: 0.3,
+    nextNoteTime: 0,
+    beatCount: 0,
+    melodyQueue: [],
+    bassQueue: [],
+    SCALE: { '2': 130.81, '3': 146.83, '4': 155.56, '5': 174.61, '6': 185.00, '7': 196.00, '8': 233.08, '9': 261.63, '10': 311.13, 'J': 349.23, 'Q': 369.99, 'K': 392.00, 'A': 466.16 },
+
+    init: function() {
+        if (!this.ctx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioContext();
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden && this.ctx) {
+                    if (this.ctx.state === 'suspended') this.ctx.resume();
+                    this.nextNoteTime = this.ctx.currentTime + 0.1;
+                }
+            });
+        }
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        if (!this.isPlaying) {
+            this.isPlaying = true;
+            this.nextNoteTime = this.ctx.currentTime + 0.1;
+            this.scheduler();
+        }
+    },
+
+    updateSequence: function() {
+        let pool = [];
+        const addCard = (c) => { if(c.type !== 'joker') pool.push(this.SCALE[c.value]); };
+        gameState.p1Hand.forEach(addCard);
+        gameState.communityCards.forEach(addCard);
+        if (pool.length === 0) pool = [130.81, 155.56, 196.00]; 
+        
+        this.melodyQueue = [];
+        for(let i=0; i<16; i++) { 
+            this.melodyQueue.push(Math.random() < 0.6 ? pool[Math.floor(Math.random() * pool.length)] : null);
+        }
+        
+        this.bassQueue = [];
+        const roots = [65.41, 77.78, 87.31, 98.00];
+        for(let i=0; i<16; i++) this.bassQueue.push(roots[Math.floor(Math.random() * roots.length)]);
+    },
+
+    scheduler: function() {
+        if (!this.isPlaying) return;
+        while (this.nextNoteTime < this.ctx.currentTime + 0.1) {
+            this.playStep(this.nextNoteTime);
+            this.nextBeat();
+        }
+        setTimeout(() => this.scheduler(), 25);
+    },
+
+    nextBeat: function() {
+        let currentBeatDur = this.beatDur;
+        if (gameState.cigarMode) currentBeatDur = 0.35;
+        else if (gameState.phase === 'SHOWDOWN') currentBeatDur = 0.2;
+        this.nextNoteTime += currentBeatDur;
+        this.beatCount++;
+    },
+
+    playStep: function(time) {
+        const beatIndex = this.beatCount % 16;
+        this.playNoise(time, 0.05, 0.05);
+        if (beatIndex % 8 === 0) this.playKick(time);
+        if (beatIndex % 8 === 4) this.playSnare(time);
+        if (beatIndex % 4 === 0) this.playBass(time, this.bassQueue[Math.floor(beatIndex/4)] || 65.41);
+        
+        const melodyNote = this.melodyQueue[beatIndex];
+        if (melodyNote) {
+            const humanize = (Math.random() - 0.5) * 0.02;
+            this.playMelody(time + humanize, melodyNote);
+        }
+        if (gameState.cigarMode && beatIndex % 8 === 0) this.playHeadySynth(time);
+    },
+
+    playHeadySynth: function(time) {
+        const dur = 5.0;
+        const notes = [130.81, 155.56, 196.00, 233.08, 293.66];
+        const masterGain = this.ctx.createGain();
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass'; filter.Q.value = 1; filter.frequency.value = 400;
+        
+        const filterLfo = this.ctx.createOscillator(); filterLfo.frequency.value = 0.2;
+        const filterLfoGain = this.ctx.createGain(); filterLfoGain.gain.value = 300;
+        filterLfo.connect(filterLfoGain); filterLfoGain.connect(filter.frequency);
+        filterLfo.start(time); filterLfo.stop(time + dur);
+
+        const pitchLfo = this.ctx.createOscillator(); pitchLfo.type = 'sine'; pitchLfo.frequency.value = 0.3;
+        const pitchLfoDepth = this.ctx.createGain(); pitchLfoDepth.gain.value = 15;
+        pitchLfo.connect(pitchLfoDepth); pitchLfo.start(time); pitchLfo.stop(time + dur);
+
+        filter.connect(masterGain); masterGain.connect(this.ctx.destination);
+        masterGain.gain.setValueAtTime(0, time);
+        masterGain.gain.linearRampToValueAtTime(0.08, time + 2.0);
+        masterGain.gain.setValueAtTime(0.08, time + 3.0);
+        masterGain.gain.linearRampToValueAtTime(0, time + dur);
+
+        notes.forEach((freq, i) => {
+            const osc = this.ctx.createOscillator();
+            osc.type = (i % 2 === 0) ? 'triangle' : 'sine';
+            osc.frequency.value = freq;
+            osc.detune.value = (Math.random() * 10) - 5;
+            pitchLfoDepth.connect(osc.detune);
+            osc.connect(filter);
+            osc.start(time); osc.stop(time + dur);
+        });
+    },
+
+    playMelody: function(time, freq) {
+        const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
+        osc.type = 'triangle'; osc.frequency.value = freq;
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.15, time + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.5);
+        osc.start(time); osc.stop(time + 0.5);
+
+        const echoOsc = this.ctx.createOscillator(); const echoGain = this.ctx.createGain();
+        echoOsc.type = 'sine'; echoOsc.frequency.value = freq;
+        echoOsc.connect(echoGain); echoGain.connect(this.ctx.destination);
+        echoGain.gain.setValueAtTime(0, time + 0.2);
+        echoGain.gain.linearRampToValueAtTime(0.05, time + 0.22);
+        echoGain.gain.exponentialRampToValueAtTime(0.001, time + 0.6);
+        echoOsc.start(time + 0.2); echoOsc.stop(time + 0.6);
+    },
+
+    playBass: function(time, freq) {
+        const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = freq;
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.3, time + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.4);
+        osc.start(time); osc.stop(time + 0.4);
+    },
+
+    playKick: function(time) {
+        const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
+        osc.frequency.setValueAtTime(100, time);
+        osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.5);
+        gain.gain.setValueAtTime(0.5, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.5);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(time); osc.stop(time + 0.5);
+    },
+
+    playSnare: function(time) {
+        const bufferSize = this.ctx.sampleRate * 0.1;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for(let i=0; i<bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
+        const noise = this.ctx.createBufferSource(); noise.buffer = buffer;
+        const gain = this.ctx.createGain();
+        const filter = this.ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 1200;
+        noise.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+        gain.gain.setValueAtTime(0.2, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.15);
+        noise.start(time);
+    },
+
+    playNoise: function(time, duration, vol) {
+        const bufferSize = this.ctx.sampleRate * duration;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for(let i=0; i<bufferSize; i++) data[i] = Math.random() * 2 - 1;
+        const noise = this.ctx.createBufferSource(); noise.buffer = buffer;
+        const gain = this.ctx.createGain();
+        const filter = this.ctx.createBiquadFilter(); filter.type = 'highpass'; filter.frequency.value = 4000;
+        noise.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+        gain.gain.setValueAtTime(vol, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+        noise.start(time);
+    },
+
+    playSFX: function(type) {
+        if(!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        
+        if (type === 'deal') {
+            const noise = this.ctx.createBufferSource();
+            const buf = this.ctx.createBuffer(1, 4410, 44100);
+            const d = buf.getChannelData(0);
+            for(let i=0; i<4410; i++) d[i] = Math.random() * 0.5;
+            noise.buffer = buf;
+            const nGain = this.ctx.createGain();
+            noise.connect(nGain); nGain.connect(this.ctx.destination);
+            nGain.gain.setValueAtTime(0.1, now);
+            nGain.gain.linearRampToValueAtTime(0, now + 0.05);
+            noise.start(now);
+        } else if (type === 'chip') {
+            osc.type = 'sine'; osc.frequency.setValueAtTime(2000, now);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+            osc.start(now); osc.stop(now + 0.05);
+        } else if (type === 'win') {
+            [440, 554, 659, 880].forEach((f, i) => {
+                const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+                o.type = 'triangle'; o.frequency.value = f;
+                o.connect(g); g.connect(this.ctx.destination);
+                g.gain.setValueAtTime(0.1, now + i * 0.1);
+                g.gain.linearRampToValueAtTime(0, now + i * 0.1 + 0.3);
+                o.start(now + i * 0.1); o.stop(now + i * 0.1 + 0.3);
+            });
+        } else if (type === 'fold') {
+            // Low tone for error/fold
+            const o = this.ctx.createOscillator(); const g = this.ctx.createGain();
+            o.type = 'sawtooth'; o.frequency.value = 150;
+            o.connect(g); g.connect(this.ctx.destination);
+            g.gain.setValueAtTime(0.2, now); g.gain.linearRampToValueAtTime(0, now + 0.2);
+            o.start(now); o.stop(now + 0.2);
+        }
+    }
+};
+
+
+// ==========================================
+// CORE SYSTEMS
+// ==========================================
+
+function init() {
+    setupInputListeners();
+    cacheGameAssets();
+    
+    // Initial Particles
+    for(let i=0; i<30; i++) gameState.bgParticles.push(createBgParticle());
+    
+    resetDeck();
+    AudioEngine.updateSequence();
+    updateButtons();
+    gameLoop();
+}
+
+function setupInputListeners() {
+    window.addEventListener('mousedown', (e) => {
+        AudioEngine.init();
+        handleInputStart(e.clientX, e.clientY);
+    });
+    window.addEventListener('mouseup', handleInputEnd);
+    
+    window.addEventListener('touchstart', (e) => {
+        AudioEngine.init();
+        if (e.target.tagName !== 'BUTTON') e.preventDefault();
+        const touch = e.touches[0];
+        handleInputStart(touch.clientX, touch.clientY);
+    }, { passive: false });
+    window.addEventListener('touchend', handleInputEnd);
+
+    window.addEventListener('keydown', (e) => {
+        const key = e.key.toLowerCase();
+        if (key === 'q') { keys.q = true; if (p1PeekTimer) clearTimeout(p1PeekTimer); p1PeekTimer = null; }
+        if (key === 'p' && gameState.isP2Human) { keys.p = true; if (p2PeekTimer) clearTimeout(p2PeekTimer); p2PeekTimer = null; }
+        
+        if (key === '+' || key === '=') clickButton(UI.betPlus, () => adjustBet(1));
+        if (key === '-' || key === '_') clickButton(UI.betMinus, () => adjustBet(-1));
+        if (key === 'm') toggleP2Mode();
+        if (e.code === 'Space') handleSpacebar(e);
+    });
+
+    window.addEventListener('keyup', (e) => {
+        const key = e.key.toLowerCase();
+        if (key === 'q') keys.q = false;
+        if (key === 'p') keys.p = false;
+    });
+
+    // UI Buttons
+    UI.dealBtn.addEventListener('click', advancePhase);
+    UI.foldBtn.addEventListener('click', () => playerAction('fold'));
+    UI.betMinus.addEventListener('click', () => adjustBet(-1));
+    UI.betPlus.addEventListener('click', () => adjustBet(1));
+    UI.confirmBtn.addEventListener('click', () => playerAction('confirm'));
+    UI.jokerBtn.addEventListener('click', toggleJokerMode);
+    UI.infoBtn.addEventListener('click', toggleInfoScreen);
+    UI.p2ModeBtn.addEventListener('click', toggleP2Mode);
+}
+
+function clickButton(btn, action) {
+    if (!btn.disabled) {
+        action();
+        btn.style.transform = "translateY(4px)";
+        setTimeout(() => btn.style.transform = "translateY(0)", 100);
+    }
+}
+
+function handleSpacebar(e) {
+    e.preventDefault();
+    if (gameState.phase === 'MENU') {
+        gameState.phase = 'START';
+        UI.controls.style.opacity = '1';
+        UI.controls.style.pointerEvents = 'auto';
+        AudioEngine.playSFX('chip');
+        updateButtons();
+        return;
+    }
+    if (!UI.confirmBtn.disabled && gameState.activePlayer) clickButton(UI.confirmBtn, () => playerAction('confirm'));
+    else if (!UI.dealBtn.disabled) clickButton(UI.dealBtn, advancePhase);
+}
+
+function cacheGameAssets() {
+    // 1. Cache Background
+    bgCacheCtx.fillStyle = '#753535';
+    bgCacheCtx.fillRect(0, 0, CONSTANTS.SCREEN_W, CONSTANTS.SCREEN_H);
+    
+    // Diamond Pattern
+    bgCacheCtx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+    const patSize = 40;
+    for (let y = -20; y < CONSTANTS.SCREEN_H; y += patSize) {
+        for (let x = -20; x < CONSTANTS.SCREEN_W; x += patSize) {
+            bgCacheCtx.beginPath();
+            bgCacheCtx.moveTo(x + patSize/2, y);
+            bgCacheCtx.lineTo(x + patSize, y + patSize/2);
+            bgCacheCtx.lineTo(x + patSize/2, y + patSize);
+            bgCacheCtx.lineTo(x, y + patSize/2);
+            bgCacheCtx.fill();
+            bgCacheCtx.fillRect(x + patSize/2 - 1, y + patSize/2 - 1, 2, 2);
+        }
+    }
+    
+    // Radial Vignette
+    const cx = CONSTANTS.SCREEN_W / 2;
+    const cy = CONSTANTS.SCREEN_H / 2;
+    const gradient = bgCacheCtx.createRadialGradient(cx, cy, 80, cx, cy, 220);
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    gradient.addColorStop(0.5, 'rgba(0, 0, 0, 0.3)');
+    gradient.addColorStop(1, 'rgba(10, 5, 5, 0.85)');
+    bgCacheCtx.fillStyle = gradient;
+    bgCacheCtx.fillRect(0, 0, CONSTANTS.SCREEN_W, CONSTANTS.SCREEN_H);
+
+    // 2. Cache Chip (Single Gold Coin)
+    const ctxC = chipCacheCtx;
+    const cxC = 10, cyC = 10;
+    ctxC.clearRect(0, 0, 20, 20);
+    
+    // Coin Side
+    ctxC.fillStyle = '#d4af37';
+    ctxC.fillRect(cxC - 7, cyC, 14, 5);
+    
+    // Ridges
+    ctxC.fillStyle = 'rgba(0,0,0,0.2)';
+    ctxC.fillRect(cxC - 7, cyC, 2, 5);
+    ctxC.fillRect(cxC - 3, cyC, 1, 5);
+    ctxC.fillRect(cxC + 2, cyC, 1, 5);
+    ctxC.fillRect(cxC + 5, cyC, 2, 5);
+    
+    // Coin Face
+    ctxC.fillStyle = COLORS.gold;
+    ctxC.beginPath(); ctxC.ellipse(cxC, cyC, 7, 3, 0, 0, Math.PI * 2); ctxC.fill();
+    ctxC.strokeStyle = 'rgba(180, 140, 0, 0.3)'; ctxC.lineWidth = 1;
+    ctxC.beginPath(); ctxC.ellipse(cxC, cyC, 5, 2, 0, 0, Math.PI * 2); ctxC.stroke();
+    
+    // Detail
+    ctxC.fillStyle = 'rgba(255,255,255,0.4)'; ctxC.fillRect(cxC - 1, cyC - 1, 2, 2);
+
+    // Outlines
+    ctxC.strokeStyle = '#000'; ctxC.lineWidth = 1;
+    ctxC.beginPath(); ctxC.ellipse(cxC, cyC, 7, 3, 0, 0, Math.PI * 2); ctxC.stroke();
+    ctxC.beginPath(); ctxC.moveTo(cxC - 7, cyC); ctxC.lineTo(cxC - 7, cyC + 4); ctxC.stroke();
+    ctxC.beginPath(); ctxC.moveTo(cxC + 7, cyC); ctxC.lineTo(cxC + 7, cyC + 4); ctxC.stroke();
+    ctxC.beginPath(); ctxC.ellipse(cxC, cyC + 4, 7, 3, 0, 0, Math.PI); ctxC.stroke();
+
+    assetsCached = true;
+}
+
+// ==========================================
+// GAME LOGIC & STATE MANAGEMENT
+// ==========================================
+
+function handleInputStart(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
+    
+    const scaleX = CONSTANTS.SCREEN_W / rect.width;
+    const scaleY = CONSTANTS.SCREEN_H / rect.height;
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
+    
+    if (gameState.phase === 'MENU') {
+        gameState.phase = 'START';
+        UI.controls.style.opacity = '1';
+        UI.controls.style.pointerEvents = 'auto';
+        AudioEngine.playSFX('chip');
+        updateButtons();
+        return;
+    }
+
+    // --- SLOTS INPUT ---
+    if (gameState.slotsOpen) {
+        // Exit Button (Top Right)
+        if (x > CONSTANTS.SCREEN_W - 40 && y < 40) {
+            gameState.slotsOpen = false;
+            gameState.infoOpen = true; // Return to info
+            updateButtons(); // Restore buttons/UI
+            return;
+        }
+        // Spin Button (Raised coords)
+        // Approx Rect: x 110-210, y 200-250
+        if (x > 110 && x < 210 && y > 195 && y < 250) {
+            startSlotSpin();
+        }
+        return; 
+    }
+
+    // --- INFO SCREEN INPUT ---
+    if (gameState.infoOpen) { 
+        // Check for "PLAY SLOTS" button click
+        // Button rect defined in drawInfoScreen: cx - 50, y 220, w 100, h 30
+        const btnX = CONSTANTS.SCREEN_W/2 - 50;
+        const btnY = 220;
+        if (x > btnX && x < btnX + 100 && y > btnY && y < btnY + 30) {
+            gameState.infoOpen = false;
+            gameState.slotsOpen = true;
+            gameState.slotMessage = "COST: 1g | WIN 25%";
+            updateButtons(); // Hide Info Button
+            return;
+        }
+
+        // Any other click closes info
+        toggleInfoScreen(); 
+        return; 
+    }
+
+    // Cigar Interaction
+    if (x > 50 && x < 120 && y > 70 && y < 110) {
+        gameState.cigarMode = !gameState.cigarMode;
+        for(let i=0; i<10; i++) spawnSmoke();
+    }
+
+    // Peek Regions
+    if (x < 120 && y > 140) p1RegionTouched = true;
+    else p1RegionTouched = false;
+    
+    if (gameState.isP2Human && x > 200 && y > 140) p2RegionTouched = true;
+    else p2RegionTouched = false;
+}
+
+function handleInputEnd() {
+    if (p1RegionTouched) {
+        p1RegionTouched = false; keys.q = true;
+        if (p1PeekTimer) clearTimeout(p1PeekTimer);
+        p1PeekTimer = setTimeout(() => { keys.q = false; p1PeekTimer = null; }, 1000);
+    }
+    if (p2RegionTouched) {
+        p2RegionTouched = false; keys.p = true;
+        if (p2PeekTimer) clearTimeout(p2PeekTimer);
+        p2PeekTimer = setTimeout(() => { keys.p = false; p2PeekTimer = null; }, 1000);
+    }
+    if (gameState.infoOpen) toggleInfoScreen();
+}
+
+function toggleP2Mode() {
+    gameState.isP2Human = !gameState.isP2Human;
+    gameState.message = gameState.isP2Human ? "P2: HUMAN MODE" : "P2: CPU MODE";
+    UI.p2ModeBtn.innerText = gameState.isP2Human ? "P2: HUMAN" : "P2: CPU";
+    if (gameState.isP2Human && gameState.activePlayer === 'p2') prepareTurn();
+    else updateButtons();
+}
+
+function toggleJokerMode() {
+    gameState.jokerMode = !gameState.jokerMode;
+    UI.jokerBtn.innerText = gameState.jokerMode ? "JOKER: ON" : "JOKER: OFF";
+    UI.jokerBtn.classList.toggle('active', gameState.jokerMode);
+}
+
+function resetDeck() {
+    gameState.deck = [];
+    for (let s of SUITS) {
+        for (let v of VALUES) {
+            let color = (s === '♥' || s === '♦') ? COLORS.red : COLORS.black;
+            gameState.deck.push({
+                suit: s, value: v, color: color,
+                x: 20, y: 40, targetX: 0, targetY: 0,
+                settled: false, type: 'standard'
+            });
+        }
+    }
+    if (gameState.jokerMode) {
+        for (let i = 0; i < 2; i++) {
+            JOKERS.forEach(j => {
+                gameState.deck.push({
+                    suit: '★', value: j.number, color: j.color,
+                    x: 20, y: 40, targetX: 0, targetY: 0,
+                    settled: false, type: 'joker', jokerId: j.id, desc: j.desc
+                });
+            });
+        }
+    }
+    shuffle(gameState.deck);
+}
+
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+}
+
+function getActivePlayerGold(who) {
+    if (who === 'p1') return gameState.p1Gold;
+    if (who === 'p2') return gameState.p2Gold;
+    if (who === 'cpu') return gameState.cpuGold;
+    return 0;
+}
+
+// Betting Logic
+function getMaxLegalTotalBet(currentPlayer) {
+    const players = ['p1', 'p2', 'cpu'];
+    let maxRivalCapacity = Infinity;
+    players.forEach(rival => {
+        if (rival !== currentPlayer && !gameState.folded[rival]) {
+            const capacity = gameState.playerBets[rival] + getActivePlayerGold(rival);
+            if (capacity < maxRivalCapacity) maxRivalCapacity = capacity;
+        }
+    });
+    const currentTotal = gameState.playerBets[currentPlayer] + getActivePlayerGold(currentPlayer);
+    return Math.min(currentTotal, maxRivalCapacity);
+}
+
+function startBettingRound() {
+    gameState.currentStreetBet = 0;
+    gameState.playerBets = { p1: 0, p2: 0, cpu: 0 };
+    gameState.raisesThisRound = { p1: 0, p2: 0, cpu: 0 };
+    
+    if (!gameState.folded.cpu) {
+        let strength = evaluateHandStrength(gameState.cpuHand, gameState.communityCards);
+        if (Math.random() < 0.35) triggerDealerTell(strength);
+    }
+    
+    gameState.activePlayer = 'p1';
+    if (gameState.folded.p1) {
+        gameState.activePlayer = 'p2';
+        if (gameState.folded.p2) gameState.activePlayer = 'cpu';
+    }
+    
+    gameState.message = "BETTING ROUND";
+    if (gameState.activePlayer === 'cpu' && gameState.folded.cpu) { endBettingRound(); return; }
+    prepareTurn();
+}
+
+function prepareTurn() {
+    const who = gameState.activePlayer;
+    if (!who) return;
+    if (gameState.folded[who]) { nextTurn(); return; }
+    
+    if (who === 'p1' || (who === 'p2' && gameState.isP2Human)) {
+        const toCall = gameState.currentStreetBet - gameState.playerBets[who];
+        gameState.draftBet = toCall;
+    }
+    checkTurnAuto();
+    updateButtons();
+}
+
+function adjustBet(delta) {
+    const who = gameState.activePlayer;
+    const toCall = gameState.currentStreetBet - gameState.playerBets[who];
+    const gold = getActivePlayerGold(who);
+    const maxTotalBet = getMaxLegalTotalBet(who);
+    const maxNewBet = maxTotalBet - gameState.playerBets[who];
+    
+    let newDraft = gameState.draftBet + delta;
+    
+    // Logic to snap to valid bet amounts
+    if (gameState.raisesThisRound[who] > 0 && newDraft > toCall) newDraft = toCall;
+    if (newDraft < toCall) newDraft = toCall;
+    if (newDraft > maxNewBet) newDraft = maxNewBet;
+    if (newDraft > toCall && newDraft < toCall + 1 && gold > toCall) newDraft = toCall + 1;
+    if (maxNewBet < toCall) newDraft = maxNewBet;
+    if (newDraft < 0) newDraft = 0;
+    
+    gameState.draftBet = newDraft;
+    updateButtons();
+    AudioEngine.playSFX('chip');
+}
+
+function playerAction(action) {
+    const who = gameState.activePlayer;
+    if (!who) return;
+    if (who === 'cpu' || (who === 'p2' && !gameState.isP2Human)) return;
+
+    if (action === 'fold') {
+        gameState.folded[who] = true;
+        gameState.message = `${who.toUpperCase()} FOLDS`;
+        AudioEngine.updateSequence();
+        if (checkWinCondition()) return;
+        nextTurn();
+        return;
+    }
+    
+    if (action === 'confirm') {
+        const amount = gameState.draftBet;
+        if (gameState.playerBets[who] + amount > gameState.currentStreetBet) gameState.raisesThisRound[who]++;
+        
+        const isAllIn = (gameState.playerBets[who] + getActivePlayerGold(who) === gameState.currentStreetBet);
+        if ((amount >= 10 || isAllIn) && Math.random() < 0.5) {
+            gameState.dealerReaction = 'SHOCK';
+            gameState.dealerReactionTimer = 80;
+        }
+
+        makeBet(who, amount);
+        AudioEngine.playSFX('chip');
+        
+        if (gameState.playerBets[who] === gameState.currentStreetBet) gameState.message = `${who.toUpperCase()} CALLS`;
+        else if (amount === 0) gameState.message = `${who.toUpperCase()} CHECKS`;
+        else gameState.message = `${who.toUpperCase()} RAISES`;
+        
+        nextTurn();
+    }
+}
+
+function makeBet(who, amount) {
+    if (who === 'p1') gameState.p1Gold -= amount;
+    if (who === 'p2') gameState.p2Gold -= amount;
+    if (who === 'cpu') gameState.cpuGold -= amount;
+    gameState.pot += amount;
+    gameState.playerBets[who] += amount;
+    if (gameState.playerBets[who] > gameState.currentStreetBet) gameState.currentStreetBet = gameState.playerBets[who];
+}
+
+function nextTurn() {
+    const order = ['p1', 'p2', 'cpu'];
+    let idx = order.indexOf(gameState.activePlayer);
+    let nextPlayer = null;
+    
+    for(let i = 1; i <= 3; i++) {
+        let checkIdx = (idx + i) % 3;
+        if (checkIdx === 0 && areBetsSettled()) { endBettingRound(); return; }
+        let candidate = order[checkIdx];
+        if (!gameState.folded[candidate]) { nextPlayer = candidate; break; }
+    }
+    
+    if (nextPlayer) {
+        gameState.activePlayer = nextPlayer;
+        prepareTurn();
+    } else {
+        endBettingRound();
+    }
+}
+
+function areBetsSettled() {
+    const active = ['p1', 'p2', 'cpu'].filter(p => !gameState.folded[p]);
+    const target = gameState.currentStreetBet;
+    return active.every(p => {
+        const hasMatched = gameState.playerBets[p] === target;
+        const isAllIn = gameState.playerBets[p] + getActivePlayerGold(p) === target;
+        return hasMatched || isAllIn;
+    });
+}
+
+function checkTurnAuto() {
+    const who = gameState.activePlayer;
+    if (!who) return;
+    if (who === 'cpu' || (who === 'p2' && !gameState.isP2Human)) {
+        gameState.aiTimer = 60;
+        gameState.message = `${who.toUpperCase()} THINKING...`;
+    } else {
+        gameState.message = `${who.toUpperCase()} TURN`;
+    }
+}
+
+function updateAI() {
+    if (gameState.aiTimer > 0) {
+        gameState.aiTimer--;
+        if (gameState.aiTimer <= 0) executeAITurn();
+    }
+}
+
+// --- Hand Evaluation (Fixed & Robust) ---
+function evaluateHandStrength(hand, community) {
+    const allCards = [...hand, ...community].filter(c => c.type !== 'joker');
+    if (allCards.length === 0) return 0;
+
+    const valueMap = {'2':2, '3':3, '4':4, '5':5, '6':6, '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14};
+    
+    let cards = allCards.map(c => ({
+        val: valueMap[c.value],
+        suit: c.suit
+    })).sort((a, b) => b.val - a.val);
+
+    // Check Flush
+    const suits = {};
+    cards.forEach(c => suits[c.suit] = (suits[c.suit] || 0) + 1);
+    let flushSuit = Object.keys(suits).find(s => suits[s] >= 5);
+    let flushCards = flushSuit ? cards.filter(c => c.suit === flushSuit) : [];
+
+    // Check Straight
+    const uniqueVals = [...new Set(cards.map(c => c.val))];
+    let straightHigh = null;
+    for (let i = 0; i <= uniqueVals.length - 5; i++) {
+        if (uniqueVals[i] - uniqueVals[i+4] === 4) {
+            straightHigh = uniqueVals[i];
+            break;
+        }
+    }
+    if (!straightHigh && uniqueVals.includes(14) && uniqueVals.includes(2) && uniqueVals.includes(3) && uniqueVals.includes(4) && uniqueVals.includes(5)) {
+        straightHigh = 5;
+    }
+
+    // Check Straight Flush
+    if (flushSuit && straightHigh) {
+        const fVals = [...new Set(flushCards.map(c => c.val))];
+        let sfHigh = null;
+        for (let i = 0; i <= fVals.length - 5; i++) {
+            if (fVals[i] - fVals[i+4] === 4) {
+                sfHigh = fVals[i];
+                break;
+            }
+        }
+        if (!sfHigh && fVals.includes(14) && fVals.includes(2) && fVals.includes(3) && fVals.includes(4) && fVals.includes(5)) sfHigh = 5;
+        if (sfHigh) return 80000000 + sfHigh;
+    }
+
+    // Count Ranks
+    const counts = {};
+    cards.forEach(c => counts[c.val] = (counts[c.val] || 0) + 1);
+    
+    const fours = [], threes = [], pairs = [], singles = [];
+    Object.keys(counts).forEach(val => {
+        const v = parseInt(val);
+        const count = counts[val];
+        if (count === 4) fours.push(v);
+        else if (count === 3) threes.push(v);
+        else if (count === 2) pairs.push(v);
+        else singles.push(v);
+    });
+    fours.sort((a,b)=>b-a); threes.sort((a,b)=>b-a); pairs.sort((a,b)=>b-a); singles.sort((a,b)=>b-a);
+
+    // 7. Quads
+    if (fours.length > 0) {
+        let kicker = cards.find(c => c.val !== fours[0]).val;
+        return 70000000 + fours[0] * 10000 + kicker;
+    }
+
+    // 6. Full House
+    if (threes.length >= 2) return 60000000 + threes[0] * 10000 + threes[1] * 100;
+    if (threes.length === 1 && pairs.length >= 1) return 60000000 + threes[0] * 10000 + pairs[0] * 100;
+
+    // 5. Flush
+    if (flushSuit) {
+        let score = 50000000;
+        for(let i=0; i<Math.min(5, flushCards.length); i++) score += flushCards[i].val * Math.pow(15, 4-i);
+        return score;
+    }
+
+    // 4. Straight
+    if (straightHigh) return 40000000 + straightHigh;
+
+    // 3. Trips
+    if (threes.length > 0) {
+        let kickers = cards.filter(c => c.val !== threes[0]).map(c => c.val).slice(0, 2);
+        let score = 30000000 + threes[0] * 10000;
+        if(kickers[0]) score += kickers[0] * 100;
+        if(kickers[1]) score += kickers[1];
+        return score;
+    }
+
+    // 2. Two Pair
+    if (pairs.length >= 2) {
+        let p1 = pairs[0];
+        let p2 = pairs[1];
+        let kicker = cards.find(c => c.val !== p1 && c.val !== p2).val;
+        return 20000000 + p1 * 10000 + p2 * 100 + kicker;
+    }
+
+    // 1. Pair
+    if (pairs.length === 1) {
+        let p1 = pairs[0];
+        let kickers = cards.filter(c => c.val !== p1).map(c => c.val).slice(0, 3);
+        let score = 10000000 + p1 * 10000;
+        if(kickers[0]) score += kickers[0] * 100;
+        if(kickers[1]) score += kickers[1] * 10;
+        if(kickers[2]) score += kickers[2];
+        return score;
+    }
+
+    // 0. High Card
+    let score = 0;
+    for(let i=0; i<Math.min(5, cards.length); i++) score += cards[i].val * Math.pow(15, 4-i);
+    return score;
+}
+
+function getHandName(hand, community) {
+    const strength = evaluateHandStrength(hand, community);
+    if (strength > 80000000) return "Straight Flush";
+    if (strength > 70000000) return "Four of a Kind";
+    if (strength > 60000000) return "Full House";
+    if (strength > 50000000) return "Flush";
+    if (strength > 40000000) return "Straight";
+    if (strength > 30000000) return "Three of a Kind";
+    
+    const nameMap = {'2':'Twos', '3':'Threes', '4':'Fours', '5':'Fives', '6':'Sixes', '7':'Sevens', '8':'Eights', '9':'Nines', '10':'Tens', '11':'Jacks', '12':'Queens', '13':'Kings', '14':'Aces'};
+    const singleMap = {'2':'Two', '3':'Three', '4':'Four', '5':'Five', '6':'Six', '7':'Seven', '8':'Eight', '9':'Nine', '10':'Ten', '11':'Jack', '12':'Queen', '13':'King', '14':'Ace'};
+
+    if (strength > 20000000) {
+        let rem = strength - 20000000;
+        let p1 = Math.floor(rem / 10000);
+        let p2 = Math.floor((rem % 10000) / 100);
+        return `Two Pair (${nameMap[p1] || p1} & ${nameMap[p2] || p2})`;
+    }
+    if (strength > 10000000) {
+        let rem = strength - 10000000;
+        let p1 = Math.floor(rem / 10000);
+        return `Pair of ${nameMap[p1] || p1}`;
+    }
+    
+    // High Card
+    const allCards = [...hand, ...community].filter(c => c.type !== 'joker');
+    const valueMap = {'2':2, '3':3, '4':4, '5':5, '6':6, '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14};
+    allCards.sort((a,b) => valueMap[b.value] - valueMap[a.value]);
+    let topVal = allCards[0] ? valueMap[allCards[0].value] : 14;
+    return `${singleMap[topVal] || 'Ace'} High`;
+}
+
+function triggerDealerTell(strength) {
+    const isBluffing = Math.random() < 0.35;
+    let reaction = 'CONFIDENT';
+    
+    // New Thresholds based on 20M+ scoring
+    if (strength > 20000000) reaction = isBluffing ? 'NERVOUS' : 'SHOCK'; // Monster (Two Pair+)
+    else if (strength > 10000000) reaction = isBluffing ? 'NERVOUS' : 'CONFIDENT'; // Strong (Pair)
+    else reaction = isBluffing ? 'CONFIDENT' : 'NERVOUS'; // Weak
+    
+    gameState.dealerReaction = reaction;
+    gameState.dealerReactionTimer = 120;
+}
+
+function executeAITurn() {
+    const who = gameState.activePlayer;
+    const currentBet = gameState.currentStreetBet;
+    const myBet = gameState.playerBets[who];
+    const toCall = currentBet - myBet;
+    const pot = gameState.pot;
+    const gold = getActivePlayerGold(who);
+    const hand = (who === 'p2') ? gameState.p2Hand : gameState.cpuHand;
+    const hasRaised = gameState.raisesThisRound[who] > 0;
+    let strength = evaluateHandStrength(hand, gameState.communityCards);
+    
+    // Pre-flop manual adjustments
+    if (gameState.phase === 'PREFLOP') {
+        if (hand[0].suit === hand[1].suit) strength += 500000; // Suited bonus (pushes high card higher)
+    }
+    
+    const potOdds = (toCall > 0) ? toCall / (pot + toCall) : 0;
+    const bluffRoll = Math.random();
+    const aggressionRoll = Math.random();
+    
+    // Updated AI Thresholds
+    const isMonster = strength > 20000000; // Two Pair or better
+    const isStrong = strength > 10000000;  // Pair or better
+    const isWeak = strength < 10000000;    // High Card
+    
+    const maxTotalBet = getMaxLegalTotalBet(who);
+    const maxNewBet = maxTotalBet - myBet;
+
+    if (toCall <= 0) {
+        // CHECKING OPPORTUNITIES
+        if (isMonster && aggressionRoll >= 0.3 && !hasRaised) {
+             let betAmt = Math.max(1, Math.floor(pot * 0.5));
+             if (betAmt > maxNewBet) betAmt = maxNewBet;
+             makeBet(who, betAmt);
+             AudioEngine.playSFX('chip');
+             gameState.raisesThisRound[who]++;
+             gameState.message = `${who.toUpperCase()} BETS ${betAmt}`;
+             nextTurn(); return;
+        }
+        if (isWeak && bluffRoll < 0.1 && !hasRaised) {
+            const betAmt = 1;
+            if (betAmt <= maxNewBet) {
+                makeBet(who, betAmt); AudioEngine.playSFX('chip');
+                gameState.raisesThisRound[who]++;
+                gameState.message = `${who.toUpperCase()} BLUFFS`;
+                nextTurn(); return;
+            }
+        }
+        gameState.message = `${who.toUpperCase()} CHECKS`;
+        nextTurn();
+    } else {
+        // CALL/RAISE/FOLD DECISIONS
+        
+        // --- MODIFIED: Pre-flop Call Rule ---
+        let shouldCallPreflop = false;
+        if (gameState.phase === 'PREFLOP' && toCall > 0 && gold >= toCall) {
+            // Be sticky 57% of the time pre-flop if the AI can afford the call, regardless of size.
+            if (Math.random() < 0.57) { // 57% probability of calling (or raising, checked below)
+                 shouldCallPreflop = true;
+            }
+        }
+        // ------------------------------------
+
+        if (isMonster && !hasRaised) {
+            const raiseAmt = toCall + Math.max(2, Math.floor(pot * 0.3));
+            if (raiseAmt <= maxNewBet) {
+                makeBet(who, raiseAmt); AudioEngine.playSFX('chip');
+                gameState.raisesThisRound[who]++;
+                gameState.message = `${who.toUpperCase()} RAISES`;
+                nextTurn(); return;
+            }
+        }
+        
+        // Check if we should call based on strength/odds OR based on the new pre-flop rule
+        if (shouldCallPreflop || isStrong || (!isWeak && potOdds < 0.25)) {
+            if (gold >= toCall) {
+                const callAmt = Math.min(toCall, maxNewBet);
+                makeBet(who, callAmt); AudioEngine.playSFX('chip');
+                gameState.message = `${who.toUpperCase()} CALLS`;
+                nextTurn(); return;
+            }
+        }
+        
+        gameState.folded[who] = true;
+        gameState.message = `${who.toUpperCase()} FOLDS`;
+        AudioEngine.updateSequence();
+        if (checkWinCondition()) return;
+        nextTurn();
+    }
+}
+
+function checkWinCondition() {
+    const active = ['p1', 'p2', 'cpu'].filter(p => !gameState.folded[p]);
+    if (active.length === 1) {
+        gameState.activePlayer = null;
+        endHandWithWinner(active[0]);
+        return true;
+    }
+    return false;
+}
+
+function endHandWithWinner(winner) {
+    gameState.phase = 'SHOWDOWN';
+    let winText = "";
+    if (winner === 'p1') { winText = "P1 WINS!"; gameState.p1Gold += gameState.pot; }
+    else if (winner === 'p2') { winText = "P2 WINS!"; gameState.p2Gold += gameState.pot; }
+    else { winText = "DEALER WINS!"; gameState.cpuGold += gameState.pot; }
+    
+    let winningHandCards = (winner === 'p1') ? gameState.p1Hand : (winner === 'p2') ? gameState.p2Hand : gameState.cpuHand;
+    gameState.winningHandDescription = getHandName(winningHandCards, gameState.communityCards);
+    gameState.pot = 0;
+    gameState.message = winText;
+    UI.dealBtn.innerText = "NEW HAND";
+    updateButtons();
+    spawnConfetti(winner);
+    AudioEngine.playSFX('win');
+}
+
+function spawnConfetti(winner) {
+    let x = CONSTANTS.SCREEN_W / 2;
+    let y = CONSTANTS.SCREEN_H / 2;
+    if (winner === 'p1') { x = 65; y = 200; }
+    else if (winner === 'p2') { x = 295; y = 200; }
+    else if (winner === 'cpu') { x = CONSTANTS.SCREEN_W / 2; y = 50; }
+    
+    for (let i = 0; i < 60; i++) {
+        gameState.confetti.push({
+            x: x,
+            y: y,
+            vx: (Math.random() - 0.5) * 10,
+            vy: (Math.random() - 0.5) * 10 - 3,
+            color: ['#e74c3c', '#2ecc71', '#3498db', '#f1c40f', '#9b59b6'][Math.floor(Math.random() * 5)],
+            life: 2.0,
+            size: Math.random() * 3 + 2
+        });
+    }
+}
+
+function endBettingRound() {
+    gameState.activePlayer = null;
+    gameState.message = "ROUND COMPLETE";
+    updateButtons();
+}
+
+function advancePhase() {
+    if (gameState.animations.length > 0 || (gameState.activePlayer !== null && !gameState.dealing)) return;
+    if (gameState.dealing) return;
+    
+    switch (gameState.phase) {
+        case 'START':
+        case 'SHOWDOWN':
+            startNewHand(); break;
+        case 'PREFLOP':
+            dealCommunity(3); gameState.phase = 'FLOP'; UI.dealBtn.innerText = 'NEXT'; startBettingRound(); break;
+        case 'FLOP':
+            dealCommunity(1); gameState.phase = 'TURN'; startBettingRound(); break;
+        case 'TURN':
+            dealCommunity(1); gameState.phase = 'RIVER'; UI.dealBtn.innerText = 'SHOWDOWN'; startBettingRound(); break;
+        case 'RIVER':
+            gameState.phase = 'SHOWDOWN'; UI.dealBtn.innerText = 'NEW HAND'; determineShowdownWinner(); break;
+    }
+    AudioEngine.updateSequence();
+    updateButtons();
+}
+
+function determineShowdownWinner() {
+    const candidates = ['p1', 'p2', 'cpu'].filter(p => !gameState.folded[p]);
+    let bestScore = -1;
+    let winners = [];
+    
+    candidates.forEach(who => {
+        let hand = (who === 'p1') ? gameState.p1Hand : (who === 'p2') ? gameState.p2Hand : gameState.cpuHand;
+        let score = evaluateHandStrength(hand, gameState.communityCards);
+        if (score > bestScore) { bestScore = score; winners = [who]; }
+        else if (score === bestScore) { winners.push(who); }
+    });
+    
+    if (winners.length > 1) endHandWithSplitPot(winners);
+    else endHandWithWinner(winners[0]);
+}
+
+function endHandWithSplitPot(winners) {
+    gameState.phase = 'SHOWDOWN';
+    const share = Math.floor(gameState.pot / winners.length);
+    let remainder = gameState.pot % winners.length;
+    
+    winners.forEach(who => {
+        let amount = share;
+        if (remainder > 0) { amount++; remainder--; }
+        if (who === 'p1') gameState.p1Gold += amount;
+        if (who === 'p2') gameState.p2Gold += amount;
+        if (who === 'cpu') gameState.cpuGold += amount;
+        spawnConfetti(who);
+    });
+    
+    let names = winners.map(w => (w === 'cpu' ? 'DEALER' : w.toUpperCase())).join(' & ');
+    gameState.winningHandDescription = getHandName(gameState.p1Hand, gameState.communityCards) + " (TIE)";
+    gameState.pot = 0;
+    gameState.message = `SPLIT: ${names}`;
+    UI.dealBtn.innerText = "NEW HAND";
+    updateButtons();
+    AudioEngine.playSFX('win');
+}
+
+function startNewHand() {
+    if (gameState.p1Gold <= 0) { gameState.phase = 'GAMEOVER'; gameState.message = "GAME OVER - YOU WENT BROKE!"; updateButtons(); return; }
+    if (gameState.p2Gold <= 0 && gameState.cpuGold <= 0) { gameState.phase = 'GAMEOVER'; gameState.message = "YOU WIN THE TOURNAMENT!"; updateButtons(); return; }
+    
+    gameState.dealing = true;
+    UI.dealBtn.disabled = true;
+    resetDeck();
+    
+    gameState.p1Hand = []; gameState.p2Hand = []; gameState.cpuHand = []; gameState.communityCards = [];
+    gameState.pot = 0;
+    gameState.phase = 'PREFLOP';
+    gameState.message = "ANTE UP";
+    gameState.winningHandDescription = "";
+    gameState.confetti = [];
+    gameState.activeJokers = [];
+    gameState.dealerReaction = null;
+    gameState.folded = { p1: gameState.p1Gold <= 0, p2: gameState.p2Gold <= 0, cpu: gameState.cpuGold <= 0 };
+    gameState.revealAllHands = false;
+    
+    if (!gameState.folded.p1) makeBet('p1', 1);
+    if (!gameState.folded.p2) makeBet('p2', 1);
+    if (!gameState.folded.cpu) makeBet('cpu', 1);
+    
+    gameState.currentStreetBet = 0;
+    gameState.playerBets = {p1:0, p2:0, cpu:0};
+    UI.dealBtn.innerText = '...';
+    
+    // Sequential Dealing Animation
+    let delay = 0;
+    setTimeout(() => dealToPlayer('p1'), delay += 100);
+    if (!gameState.folded.p2) setTimeout(() => dealToPlayer('p2'), delay += 100);
+    if (!gameState.folded.cpu) setTimeout(() => dealToPlayer('cpu'), delay += 100);
+    setTimeout(() => dealToPlayer('p1'), delay += 100);
+    if (!gameState.folded.p2) setTimeout(() => dealToPlayer('p2'), delay += 100);
+    if (!gameState.folded.cpu) setTimeout(() => dealToPlayer('cpu'), delay += 100);
+    
+    setTimeout(() => {
+        AudioEngine.updateSequence();
+        gameState.dealing = false;
+        startBettingRound();
+        UI.dealBtn.innerText = 'NEXT';
+        updateButtons();
+    }, delay + 500);
+}
+
+function dealToPlayer(who) {
+    let card = gameState.deck.pop();
+    // Ensure first cards aren't Jokers for simplicity if they appear
+    while (card.type === 'joker') {
+        gameState.deck.unshift(card);
+        card = gameState.deck.pop();
+    }
+    
+    let targetX = 0, targetY = 0;
+    let index = (who === 'p1') ? gameState.p1Hand.length : (who === 'p2') ? gameState.p2Hand.length : gameState.cpuHand.length;
+    
+    if (who === 'p1') {
+        targetX = 25 + (index * 18); targetY = 200 + (index * 5);
+        gameState.p1Hand.push(card);
+    } else if (who === 'p2') {
+        targetX = 255 + (index * 18); targetY = 200 - (index * 5);
+        gameState.p2Hand.push(card);
+    } else if (who === 'cpu') {
+        targetX = CONSTANTS.SCREEN_W/2 - 12 + (index * 15); targetY = 70;
+        gameState.cpuHand.push(card);
+    }
+    
+    spawnCardAnimation(card, targetX, targetY, (who === 'cpu' ? CONSTANTS.CARD_W : CONSTANTS.P_CARD_W), (who === 'cpu' ? CONSTANTS.CARD_H : CONSTANTS.P_CARD_H));
+    setTimeout(() => AudioEngine.playSFX('deal'), 100);
+}
+
+function dealCommunity(count) {
+    gameState.dealing = true;
+    gameState.deck.pop(); // Burn card
+    
+    let startX = CONSTANTS.SCREEN_W/2 - ((5 * (CONSTANTS.CARD_W + 4)) / 2);
+    for(let i=0; i<count; i++) {
+        let card = gameState.deck.pop();
+        while (card.type === 'joker' && gameState.activeJokers.includes(card.jokerId)) {
+            if (gameState.deck.length === 0) break;
+            card = gameState.deck.pop();
+        }
+        if (card.type === 'joker') gameState.activeJokers.push(card.jokerId);
+        
+        let slot = gameState.communityCards.length;
+        let tx = startX + slot * (CONSTANTS.CARD_W + 4);
+        gameState.communityCards.push(card);
+        
+        if (card.type === 'joker') triggerJokerEffect(card.jokerId);
+        
+        setTimeout(() => {
+            spawnCardAnimation(card, tx, 145, CONSTANTS.CARD_W, CONSTANTS.CARD_H);
+            AudioEngine.playSFX(card.type === 'joker' ? 'joker' : 'deal');
+            if (i === count -1) { gameState.dealing = false; updateButtons(); }
+        }, i * 200);
+    }
+}
+
+function triggerJokerEffect(id) {
+    const joker = JOKERS.find(j => j.id === id);
+    gameState.message = `JOKER: ${joker.desc}`;
+    
+    if (id === 'j1') { gameState.pot += 15; }
+    else if (id === 'j2') { gameState.revealAllHands = true; }
+    else if (id === 'j3') {
+        if(gameState.p1Gold > 0) gameState.p1Gold += 7;
+        if(gameState.p2Gold > 0) gameState.p2Gold += 7;
+        if(gameState.cpuGold > 0) gameState.cpuGold += 7;
+    } else if (id === 'j4') {
+        let p1H = [...gameState.p1Hand], p2H = [...gameState.p2Hand], cpuH = [...gameState.cpuHand];
+        gameState.p2Hand = p1H; gameState.cpuHand = p2H; gameState.p1Hand = cpuH;
+        reassignHandTargets(gameState.p1Hand, 'p1');
+        reassignHandTargets(gameState.p2Hand, 'p2');
+        reassignHandTargets(gameState.cpuHand, 'cpu');
+    }
+}
+
+function reassignHandTargets(hand, who) {
+    hand.forEach((card, index) => {
+        let targetX = 0, targetY = 0;
+        let w = (who === 'cpu') ? CONSTANTS.CARD_W : CONSTANTS.P_CARD_W;
+        let h = (who === 'cpu') ? CONSTANTS.CARD_H : CONSTANTS.P_CARD_H;
+        
+        if (who === 'p1') { targetX = 25 + (index * 18); targetY = 200 + (index * 5); }
+        else if (who === 'p2') { targetX = 255 + (index * 18); targetY = 200 - (index * 5); }
+        else if (who === 'cpu') { targetX = CONSTANTS.SCREEN_W/2 - 12 + (index * 15); targetY = 70; }
+        
+        spawnCardAnimation(card, targetX, targetY, w, h);
+    });
+}
+
+function spawnCardAnimation(card, tx, ty, w, h) {
+    card.targetW = w;
+    card.targetH = h;
+    card.targetX = tx;
+    card.targetY = ty;
+    card.settled = false;
+    gameState.animations.push(card);
+}
+
+function updateButtons() {
+    // Hide Info Button if Slots are open
+    if (gameState.slotsOpen) {
+        UI.infoBtn.style.display = 'none';
+    } else {
+        UI.infoBtn.style.display = 'block';
+    }
+
+    if (gameState.phase === 'MENU') {
+        UI.controls.style.opacity = '0';
+        UI.controls.style.pointerEvents = 'none';
+        return;
+    }
+
+    UI.p2ModeBtn.style.display = (gameState.phase === 'START') ? 'none' : 'inline-block';
+    
+    if (gameState.phase === 'GAMEOVER' || gameState.dealing || gameState.animations.length > 0) {
+        UI.dealBtn.disabled = true; UI.dealBtn.style.opacity = 0.5;
+        UI.foldBtn.disabled = true; UI.betMinus.disabled = true;
+        UI.betPlus.disabled = true; UI.confirmBtn.disabled = true;
+        return;
+    }
+
+    if (gameState.activePlayer === null) {
+        UI.dealBtn.disabled = false; UI.dealBtn.style.opacity = 1;
+    } else {
+        UI.dealBtn.disabled = true; UI.dealBtn.style.opacity = 0.5;
+    }
+
+    let canAct = (gameState.activePlayer === 'p1') || (gameState.activePlayer === 'p2' && gameState.isP2Human);
+    
+    UI.foldBtn.disabled = !canAct;
+    UI.betMinus.disabled = !canAct;
+    UI.betPlus.disabled = !canAct;
+    UI.confirmBtn.disabled = !canAct;
+
+    if (canAct) {
+        const who = gameState.activePlayer;
+        const toCall = gameState.currentStreetBet - gameState.playerBets[who];
+        const bet = gameState.draftBet;
+        const actorGold = getActivePlayerGold(who);
+        const maxTotalBet = getMaxLegalTotalBet(who);
+        const maxNewBet = maxTotalBet - gameState.playerBets[who];
+        
+        UI.betMinus.disabled = (bet <= toCall);
+        const hasRaised = gameState.raisesThisRound[who] > 0;
+        const cannotRaiseMore = hasRaised && bet >= toCall;
+        UI.betPlus.disabled = (bet >= maxNewBet || actorGold <= 0 || cannotRaiseMore);
+        UI.confirmBtn.disabled = (bet < 0);
+        
+        if (bet === 0) UI.betDisplay.innerText = "CHECK";
+        else if (bet === toCall) UI.betDisplay.innerText = `CALL ${bet}`;
+        else if (bet > toCall) UI.betDisplay.innerText = `RAISE ${bet}`;
+        else if (bet < toCall) UI.betDisplay.innerText = `ALL-IN ${bet}`;
+    } else {
+        UI.betDisplay.innerText = "WAIT";
+    }
+}
+
+// ==========================================
+// MAIN LOOP & RENDERING
+// ==========================================
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+function update() {
+    // Particle updates
+    for (let i = gameState.smokeParticles.length - 1; i >= 0; i--) {
+        let p = gameState.smokeParticles[i];
+        p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+        if (p.life <= 0) gameState.smokeParticles.splice(i, 1);
+    }
+    
+    if (gameState.phase === 'MENU') {
+        if (gameState.cigarMode && Math.random() < 0.05) spawnSmoke();
+        return;
+    }
+
+    // --- SLOTS UPDATE ---
+    if (gameState.slotsOpen) {
+        updateSlots();
+        // Still animate particles (bg + coins)
+        gameState.bgParticles.forEach(p => {
+            p.x += p.vx; p.y += p.vy;
+            if (p.x < 0) p.x = CONSTANTS.SCREEN_W; if (p.x > CONSTANTS.SCREEN_W) p.x = 0;
+            if (p.y < 0) p.y = CONSTANTS.SCREEN_H; if (p.y > CONSTANTS.SCREEN_H) p.y = 0;
+        });
+        
+        // Update confetti (used for coins here)
+        for (let i = gameState.confetti.length - 1; i >= 0; i--) {
+            let p = gameState.confetti[i];
+            p.x += p.vx; p.y += p.vy; p.vy += 0.2; // Gravity
+            p.life -= 0.02;
+            if (p.y > CONSTANTS.SCREEN_H) { p.vy *= -0.6; p.y = CONSTANTS.SCREEN_H - 2; }
+            if (p.life <= 0) gameState.confetti.splice(i, 1);
+        }
+        return;
+    }
+
+    // Animations
+    const wasAnimating = gameState.animations.length > 0;
+    const speed = 0.15;
+    for (let i = gameState.animations.length - 1; i >= 0; i--) {
+        let card = gameState.animations[i];
+        card.x += (card.targetX - card.x) * speed;
+        card.y += (card.targetY - card.y) * speed;
+        if (Math.abs(card.targetX - card.x) < 1 && Math.abs(card.targetY - card.y) < 1) {
+            card.x = card.targetX; card.y = card.targetY;
+            card.settled = true;
+            gameState.animations.splice(i, 1);
+        }
+    }
+    if (wasAnimating && gameState.animations.length === 0) updateButtons();
+
+    // Logic
+    if (!gameState.infoOpen) {
+        if (gameState.activePlayer === 'cpu' || (gameState.activePlayer === 'p2' && !gameState.isP2Human)) updateAI();
+        if (gameState.dealerEyeTimer > 0) gameState.dealerEyeTimer--;
+        else {
+            if (gameState.dealerEyeDir === 0) {
+                gameState.dealerEyeDir = Math.random() < 0.5 ? -1 : 1;
+                gameState.dealerEyeTimer = 30 + Math.random() * 40;
+            } else {
+                gameState.dealerEyeDir = 0;
+                gameState.dealerEyeTimer = 400 + Math.random() * 600;
+            }
+        }
+        if (gameState.dealerReactionTimer > 0) {
+            gameState.dealerReactionTimer--;
+            if (gameState.dealerReactionTimer <= 0) gameState.dealerReaction = null;
+        }
+    }
+    
+    if (gameState.cigarMode && Math.random() < 0.05) spawnSmoke();
+    
+    gameState.bgParticles.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0) p.x = CONSTANTS.SCREEN_W;
+        if (p.x > CONSTANTS.SCREEN_W) p.x = 0;
+        if (p.y < 0) p.y = CONSTANTS.SCREEN_H;
+        if (p.y > CONSTANTS.SCREEN_H) p.y = 0;
+    });
+
+    for (let i = gameState.confetti.length - 1; i >= 0; i--) {
+        let p = gameState.confetti[i];
+        p.x += p.vx; p.y += p.vy; p.vy += 0.2; p.vx *= 0.95; p.life -= 0.03;
+        if (p.y > CONSTANTS.SCREEN_H) { p.vy *= -0.5; p.y = CONSTANTS.SCREEN_H - 2; }
+        if (p.life <= 0) gameState.confetti.splice(i, 1);
+    }
+}
+
+function draw() {
+    if (gameState.phase === 'MENU') {
+        drawStartScreen();
+        return;
+    }
+
+    drawBackground();
+    drawDealerBody();
+    drawTable();
+    drawCardSlots();
+    drawChipGroup('dealer');
+    drawCigar();
+    drawSmoke();
+    drawDealerArms();
+    drawHand(gameState.p1Hand, 'p1');
+    drawHand(gameState.p2Hand, 'p2');
+    drawHand(gameState.cpuHand, 'cpu');
+    drawCommunityCards();
+    drawChipGroup('players');
+    drawAnimations();
+    drawConfetti();
+    drawUI();
+    
+    if (gameState.infoOpen) drawInfoScreen();
+    if (gameState.slotsOpen) drawSlotsScreen();
+}
+
+// --- SLOTS LOGIC ---
+
+function startSlotSpin() {
+    if (gameState.slotSpinning) return;
+    if (gameState.p1Gold < 1) {
+        gameState.slotMessage = "NO FUNDS!";
+        AudioEngine.playSFX('fold'); // Error sound
+        return;
+    }
+    
+    gameState.p1Gold -= 1;
+    gameState.slotSpinning = true;
+    gameState.slotMessage = "GOOD LUCK...";
+    AudioEngine.playSFX('chip');
+
+    // 1. Determine Outcome Immediately
+    const isWin = Math.random() < 0.25; // 25% win chance
+    
+    if (isWin) {
+        // Pick winning symbol based on rarity logic
+        // '🍒': 1, '🍇': 2, '🔔': 3, '💎': 5, '7️⃣': 10 
+        // Weights: 🍒(40%), 🍇(30%), 🔔(15%), 💎(10%), 7️⃣(5%)
+        const r = Math.random();
+        let symIndex = 0; // Default Cherry
+        if (r > 0.40) symIndex = 4; // Grape
+        if (r > 0.70) symIndex = 3; // Bell
+        if (r > 0.85) symIndex = 2; // Diamond
+        if (r > 0.95) symIndex = 1; // 7
+        
+        gameState.slotTargetReels = [symIndex, symIndex, symIndex];
+    } else {
+        // Force Loss (Mismatch)
+        let r1 = Math.floor(Math.random() * SLOT_SYMBOLS.length);
+        let r2 = Math.floor(Math.random() * SLOT_SYMBOLS.length);
+        let r3 = Math.floor(Math.random() * SLOT_SYMBOLS.length);
+        
+        // If accidentally matched, shift last one
+        if (r1 === r2 && r2 === r3) {
+            r3 = (r3 + 1) % SLOT_SYMBOLS.length;
+        }
+        gameState.slotTargetReels = [r1, r2, r3];
+    }
+
+    // 2. Set Timers for Sequential Stopping (Frames)
+    // Reel 1 stops at 30, Reel 2 at 60, Reel 3 at 90
+    gameState.slotReelTimers = [30, 60, 90];
+}
+
+function updateSlots() {
+    if (!gameState.slotSpinning) return;
+
+    let stillSpinning = false;
+
+    for (let i = 0; i < 3; i++) {
+        if (gameState.slotReelTimers[i] > 0) {
+            gameState.slotReelTimers[i]--;
+            stillSpinning = true;
+            
+            // Visual Spin: Randomize current visible symbol while timer active
+            if (gameState.slotReelTimers[i] % 3 === 0) {
+                gameState.slotReels[i] = Math.floor(Math.random() * SLOT_SYMBOLS.length);
+            }
+            
+            // Timer Hit 0: Lock it in
+            if (gameState.slotReelTimers[i] === 0) {
+                gameState.slotReels[i] = gameState.slotTargetReels[i];
+                AudioEngine.playSFX('deal'); // "Clack" sound
+            }
+        }
+    }
+
+    if (!stillSpinning) {
+        finalizeSlotRound();
+    }
+}
+
+function finalizeSlotRound() {
+    gameState.slotSpinning = false;
+    
+    const r1 = gameState.slotReels[0];
+    const r2 = gameState.slotReels[1];
+    const r3 = gameState.slotReels[2];
+    
+    if (r1 === r2 && r2 === r3) {
+        const sym = SLOT_SYMBOLS[r1];
+        const reward = gameState.slotPayouts[sym] || 1;
+        
+        gameState.p1Gold += reward;
+        gameState.slotMessage = `WINNER! +${reward}g`;
+        AudioEngine.playSFX('win');
+        
+        // Coin Fountain
+        spawnCoinFountain(reward * 5); // More particles for bigger wins
+    } else {
+        gameState.slotMessage = "TRY AGAIN";
+    }
+}
+
+function spawnCoinFountain(amount) {
+    const count = Math.min(amount + 20, 100); // Cap particles
+    for (let i = 0; i < count; i++) {
+        gameState.confetti.push({
+            x: CONSTANTS.SCREEN_W / 2, 
+            y: CONSTANTS.SCREEN_H / 2 + 40, // Start at bottom of reels
+            vx: (Math.random() - 0.5) * 15, 
+            vy: -(Math.random() * 10 + 5), // Shoot up
+            color: '#f1c40f', // Gold
+            life: 2.0, 
+            size: Math.random() * 3 + 2
+        });
+    }
+}
+
+function drawSlotsScreen() {
+    const cx = CONSTANTS.SCREEN_W / 2;
+    const cy = CONSTANTS.SCREEN_H / 2;
+    const lift = 25; // Amount to raise the machine
+
+    // 1. Darken Background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.92)'; 
+    ctx.fillRect(0, 0, CONSTANTS.SCREEN_W, CONSTANTS.SCREEN_H);
+
+    // --- LEVER (Draw behind cabinet first) ---
+    // Lever Base
+    ctx.fillStyle = '#7f8c8d';
+    ctx.fillRect(cx + 115, cy - 10 - lift, 15, 40);
+    // Lever Stick
+    const isSpinning = gameState.slotSpinning;
+    ctx.strokeStyle = '#bdc3c7'; ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(cx + 122, cy + 10 - lift); // Pivot point
+    // If spinning, lever is down
+    const stickEnd = isSpinning ? {x: cx + 122, y: cy + 60 - lift} : {x: cx + 122, y: cy - 50 - lift};
+    ctx.lineTo(stickEnd.x, stickEnd.y);
+    ctx.stroke();
+    // Lever Knob
+    ctx.fillStyle = '#e74c3c';
+    ctx.beginPath(); ctx.arc(stickEnd.x, stickEnd.y, 10, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // --- CABINET BODY ---
+    // Main shape dimensions
+    const cabW = 220;
+    const cabH = 180;
+    const cabX = cx - cabW/2;
+    const cabY = cy - 90 - lift;
+    
+    // Gradient Body
+    const bodyGrad = ctx.createLinearGradient(cabX, cabY, cabX + cabW, cabY + cabH);
+    bodyGrad.addColorStop(0, '#34495e');
+    bodyGrad.addColorStop(0.5, '#2c3e50');
+    bodyGrad.addColorStop(1, '#34495e');
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath(); ctx.roundRect(cabX, cabY, cabW, cabH, 10); ctx.fill();
+    
+    // Border/Trim
+    ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.roundRect(cabX, cabY, cabW, cabH, 10); ctx.stroke();
+
+    // --- MARQUEE (Top) ---
+    const marqH = 35;
+    ctx.fillStyle = '#c0392b';
+    ctx.beginPath(); ctx.roundRect(cabX + 5, cabY + 5, cabW - 10, marqH, 5); ctx.fill();
+    
+    // Flashing Lights on Marquee
+    const time = Date.now() / 200;
+    ctx.fillStyle = (Math.floor(time) % 2 === 0) ? '#f1c40f' : '#fff';
+    for(let i = 15; i < cabW - 10; i+=25) {
+        ctx.beginPath(); ctx.arc(cabX + i, cabY + 5 + marqH/2, 2, 0, Math.PI*2); ctx.fill();
+    }
+    
+    // Title
+    ctx.shadowColor = '#000'; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 2;
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 18px "Courier New"'; ctx.textAlign = 'center';
+    ctx.fillText("PIXEL SLOTS", cx, cabY + 28);
+    ctx.shadowColor = 'transparent';
+
+    // --- REEL WINDOW ---
+    const reelY = cabY + 50;
+    const reelH = 70;
+    const reelW = cabW - 30;
+    
+    // Window Frame
+    ctx.fillStyle = '#000';
+    ctx.fillRect(cx - reelW/2, reelY, reelW, reelH);
+    // Glass Glare
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.beginPath(); ctx.moveTo(cx - reelW/2, reelY); ctx.lineTo(cx - reelW/2 + 20, reelY); ctx.lineTo(cx - reelW/2, reelY + 20); ctx.fill();
+
+    // --- REELS ---
+    const rw = 50;
+    const startX = cx - (rw * 1.5) - 10;
+    
+    for (let i = 0; i < 3; i++) {
+        const rx = startX + i * (rw + 10);
+        const ry = reelY + 5;
+        const rh = reelH - 10;
+        
+        // Reel Strip BG
+        ctx.fillStyle = '#ecf0f1'; 
+        ctx.fillRect(rx, ry, rw, rh);
+        
+        // Symbol
+        const spinning = gameState.slotReelTimers[i] > 0;
+        ctx.font = '32px "Courier New"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        
+        if (spinning) {
+            // Blur
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            const s1 = SLOT_SYMBOLS[Math.floor(Math.random()*SLOT_SYMBOLS.length)];
+            const s2 = SLOT_SYMBOLS[Math.floor(Math.random()*SLOT_SYMBOLS.length)];
+            ctx.fillText(s1, rx + rw/2, ry + rh/2 - 15);
+            ctx.fillText(s2, rx + rw/2, ry + rh/2 + 15);
+        } else {
+            // Stopped
+            ctx.fillStyle = '#000';
+            const sym = SLOT_SYMBOLS[gameState.slotReels[i]];
+            // Removed yellow glow logic here
+            ctx.fillText(sym, rx + rw/2, ry + rh/2 + 2);
+            ctx.shadowBlur = 0;
+        }
+        
+        // Inner Shadow (cylinder effect)
+        const grad = ctx.createLinearGradient(rx, ry, rx + rw, ry);
+        grad.addColorStop(0, 'rgba(0,0,0,0.3)');
+        grad.addColorStop(0.2, 'rgba(0,0,0,0)');
+        grad.addColorStop(0.8, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, 'rgba(0,0,0,0.3)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(rx, ry, rw, rh);
+        
+        ctx.strokeStyle = '#7f8c8d'; ctx.lineWidth = 1; ctx.strokeRect(rx, ry, rw, rh);
+    }
+    ctx.textBaseline = 'alphabetic';
+
+    // --- PAYOUT DISPLAY (On Cabinet) ---
+    ctx.fillStyle = '#95a5a6'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText("🍒x1 🍇x2 🔔x3 💎x5 7️⃣x10", cx, reelY + reelH + 15);
+
+    // --- MESSAGE DISPLAY (REMOVED AS REQUESTED) ---
+    // ctx.fillStyle = '#f1c40f'; ctx.font = 'bold 14px monospace';
+    // ctx.fillText(gameState.slotMessage, cx, reelY + reelH + 30);
+    
+    // --- CONTROLS AREA (Bottom) ---
+    const btnY = cabY + cabH + 10;
+    
+    // SPIN BUTTON
+    const btnColor = gameState.slotSpinning ? '#7f8c8d' : '#2ecc71';
+    ctx.fillStyle = btnColor;
+    ctx.beginPath(); ctx.roundRect(cx - 50, btnY, 100, 40, 5); ctx.fill();
+    // 3D bevel
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(cx - 50, btnY, 100, 40, 5); ctx.stroke();
+    
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 16px monospace';
+    ctx.fillText("SPIN (1g)", cx, btnY + 26);
+    
+    // Player Money (Floating)
+    ctx.fillStyle = '#fff'; ctx.font = '14px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(`GOLD: ${gameState.p1Gold}`, cx + 110, cabY - 10);
+    
+    // Exit Button
+    ctx.fillStyle = '#c0392b'; ctx.fillRect(CONSTANTS.SCREEN_W - 35, 5, 30, 30);
+    ctx.strokeStyle = '#fff'; ctx.strokeRect(CONSTANTS.SCREEN_W - 35, 5, 30, 30);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 20px monospace'; ctx.textAlign = 'center'; ctx.fillText("X", CONSTANTS.SCREEN_W - 20, 27);
+}
+
+// --- Drawing Helpers ---
+function createBgParticle() {
+    const colors = ['#4a148c', '#9c27b0', '#e91e63', '#311b92', '#fbc02d'];
+    return {
+        x: Math.random() * CONSTANTS.SCREEN_W,
+        y: Math.random() * CONSTANTS.SCREEN_H,
+        radius: Math.random() * 20 + 5,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: (Math.random() - 0.5) * 0.5,
+        alpha: Math.random() * 0.5 + 0.1
+    };
+}
+
+function toggleInfoScreen() {
+    gameState.infoOpen = !gameState.infoOpen;
+    if (gameState.infoOpen) {
+        UI.dealBtn.disabled = true; UI.foldBtn.disabled = true;
+        UI.betMinus.disabled = true; UI.betPlus.disabled = true;
+        UI.confirmBtn.disabled = true; UI.jokerBtn.disabled = true;
+        UI.p2ModeBtn.disabled = true;
+    } else {
+        // Do not re-enable buttons if slots opened from here, handled in logic
+        if (!gameState.slotsOpen) {
+            updateButtons();
+            UI.jokerBtn.disabled = false;
+            UI.p2ModeBtn.disabled = false;
+        }
+    }
+}
+
+// --- Drawing Implementations ---
+
+function drawBackground() {
+    if (gameState.cigarMode) {
+        ctx.fillStyle = '#120024';
+        ctx.fillRect(0, 0, CONSTANTS.SCREEN_W, CONSTANTS.SCREEN_H);
+        gameState.bgParticles.forEach(p => {
+            ctx.globalAlpha = p.alpha;
+            ctx.fillStyle = p.color;
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1.0;
+        });
+    } else {
+        if (assetsCached) ctx.drawImage(bgCache, 0, 0);
+        else {
+            ctx.fillStyle = '#753535'; ctx.fillRect(0, 0, CONSTANTS.SCREEN_W, CONSTANTS.SCREEN_H);
+        }
+    }
+}
+
+function drawCigar() {
+    const AX = 75, AY = 90;
+    // Ashtray
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; ctx.beginPath(); ctx.ellipse(AX, AY + 4, 16, 9, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#455a64'; ctx.beginPath(); ctx.ellipse(AX, AY + 2, 16, 9, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#37474f'; ctx.beginPath(); ctx.ellipse(AX, AY + 2, 16, 9, 0, 0, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#607d8b'; ctx.beginPath(); ctx.ellipse(AX, AY, 16, 9, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#263238'; ctx.beginPath(); ctx.ellipse(AX, AY, 11, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'; ctx.beginPath(); ctx.ellipse(AX - 7, AY - 1, 4, 2, -0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#37474f'; ctx.fillRect(AX + 8, AY - 6, 6, 4);
+    
+    // Cigar Stick
+    ctx.save();
+    ctx.translate(AX + 32, AY + 4);
+    ctx.rotate(205 * Math.PI / 180);
+    const length = 28, thickness = 5;
+    const cigarGrad = ctx.createLinearGradient(0, 0, 0, thickness);
+    cigarGrad.addColorStop(0, '#5d4037'); cigarGrad.addColorStop(0.5, '#8d6e63'); cigarGrad.addColorStop(1, '#4e342e');
+    ctx.fillStyle = cigarGrad; ctx.fillRect(0, 0, length, thickness);
+    
+    // Bands
+    ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(8, 0, 1, thickness); ctx.fillRect(16, 0, 1, thickness); ctx.fillRect(22, 0, 1, thickness);
+    ctx.fillStyle = '#b71c1c'; ctx.fillRect(3, -1, 6, thickness + 2);
+    ctx.fillStyle = '#ffd700'; ctx.fillRect(3, -1, 1, thickness + 2); ctx.fillRect(8, -1, 1, thickness + 2); ctx.fillRect(5, 1, 2, 2);
+    
+    // Ash
+    const ashLen = 4; ctx.fillStyle = '#bdbdbd'; ctx.fillRect(length, 0, ashLen, thickness);
+    ctx.fillStyle = '#757575'; ctx.fillRect(length + 1, 1, 1, 1); ctx.fillRect(length + 2, 3, 1, 1);
+    
+    // Cherry (Lit part)
+    if (gameState.cigarMode) {
+        const time = Date.now() * 0.005; const pulse = (Math.sin(time) + 1) / 2;
+        ctx.fillStyle = '#ff5722'; ctx.fillRect(length + ashLen - 1, 1, 1, thickness - 2);
+        ctx.globalAlpha = 0.3 + (pulse * 0.4);
+        ctx.fillStyle = '#ffab00'; ctx.beginPath(); ctx.arc(length + ashLen, thickness/2, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1.0;
+    } else {
+        ctx.fillStyle = '#424242'; ctx.fillRect(length + ashLen - 1, 1, 1, thickness - 2);
+    }
+    ctx.restore();
+}
+
+function drawSmoke() {
+    ctx.fillStyle = 'rgba(200, 200, 200, 0.2)';
+    gameState.smokeParticles.forEach(p => {
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2); ctx.fill();
+    });
+}
+
+function spawnSmoke() {
+    gameState.smokeParticles.push({
+        x: 77, y: 84,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: -Math.random() * 0.5 - 0.1,
+        life: 1.0,
+        size: Math.random() * 2 + 0.5
+    });
+}
+
+function drawTable() {
+    const cx = CONSTANTS.SCREEN_W / 2;
+    const cy = CONSTANTS.SCREEN_H / 2 + 30;
+    const w = 150, h = 82;
+    
+    // Rail
+    const railGradient = ctx.createLinearGradient(cx, cy - h - 15, cx, cy + h + 15);
+    railGradient.addColorStop(0, '#3e2723'); railGradient.addColorStop(0.2, '#5d4037');
+    railGradient.addColorStop(0.8, '#3e2723'); railGradient.addColorStop(1, '#1a100e');
+    ctx.fillStyle = railGradient; ctx.beginPath(); ctx.ellipse(cx, cy, w + 12, h + 12, 0, 0, Math.PI * 2); ctx.fill();
+    
+    // Felt
+    const feltGradient = ctx.createRadialGradient(cx, cy, h * 0.2, cx, cy, w);
+    feltGradient.addColorStop(0, '#2ecc71'); feltGradient.addColorStop(0.8, '#27ae60'); feltGradient.addColorStop(1, '#1e8449');
+    ctx.fillStyle = feltGradient; ctx.beginPath(); ctx.ellipse(cx, cy, w, h, 0, 0, Math.PI * 2); ctx.fill();
+    
+    // Decoration
+    ctx.strokeStyle = 'rgba(241, 196, 15, 0.5)'; ctx.lineWidth = 2; ctx.setLineDash([4, 6]);
+    ctx.beginPath(); ctx.ellipse(cx, cy, w - 25, h - 18, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+    ctx.font = 'bold 22px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.translate(cx, cy - 8); 
+    ctx.scale(1, 0.7); 
+    ctx.fillText("PIXEL HOLD'EM", 0, 0);
+    ctx.restore();
+}
+
+function drawDealerBody() {
+    let x = CONSTANTS.SCREEN_W / 2 - 20;
+    let y = 20;
+    
+    // Nervous Shake
+    if (gameState.dealerReaction === 'NERVOUS') {
+        x += (Math.random() - 0.5) * 2;
+        y += (Math.random() - 0.5) * 2;
+    }
+
+    const coatColor = '#967117'; const coatDark = '#654321';
+    const shirtColor = '#dcdcdc'; const tieColor = '#1a1a1a';
+    const hatColor = '#333333'; const hatBand = '#000000';
+
+    // Coat
+    ctx.fillStyle = gameState.folded.cpu ? COLORS.disabled : coatColor;
+    ctx.fillRect(x, y + 25, 40, 45);
+    
+    // Inner Suit Details
+    if (!gameState.folded.cpu) {
+        ctx.fillStyle = coatDark;
+        ctx.beginPath(); ctx.moveTo(x + 20, y + 50); ctx.lineTo(x + 10, y + 25); ctx.lineTo(x + 20, y + 25); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(x + 20, y + 50); ctx.lineTo(x + 30, y + 25); ctx.lineTo(x + 20, y + 25); ctx.fill();
+        ctx.fillStyle = shirtColor;
+        ctx.beginPath(); ctx.moveTo(x + 15, y + 25); ctx.lineTo(x + 25, y + 25); ctx.lineTo(x + 20, y + 35); ctx.fill();
+        
+        // DRAW TIE (FIXED & DETAILED)
+        ctx.fillStyle = tieColor; 
+        // Knot (2x2 pixel)
+        ctx.fillRect(x + 19, y + 25, 2, 2); 
+        // Blade (2x10 pixel strip)
+        ctx.fillRect(x + 19, y + 27, 2, 10); 
+        // Tip (triangle)
+        ctx.beginPath();
+        ctx.moveTo(x + 19, y + 37);
+        ctx.lineTo(x + 21, y + 37);
+        ctx.lineTo(x + 20, y + 40); 
+        ctx.fill();
+    }
+
+    // Head
+    ctx.fillStyle = gameState.folded.cpu ? COLORS.disabled : COLORS.skin;
+    ctx.fillRect(x + 10, y + 5, 20, 20);
+    
+    // Face & Eyes
+    if (!gameState.folded.cpu) {
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(x + 10, y + 5, 20, 9); // Shadow
+        
+        const eyeOff = gameState.dealerEyeDir * 2;
+        ctx.fillStyle = '#fff';
+        
+        if (gameState.dealerReaction === 'CONFIDENT') {
+            // Smirk / Confident Look
+            ctx.fillRect(x + 13 + eyeOff, y + 10, 5, 1);
+            ctx.fillRect(x + 23 + eyeOff, y + 10, 5, 1);
+            ctx.fillStyle = '#3e2723'; ctx.fillRect(x + 13 + eyeOff, y + 8, 5, 1); // Brow
+            ctx.fillRect(x + 23 + eyeOff, y + 6, 5, 1); // Raised Brow
+            ctx.fillStyle = '#000'; ctx.fillRect(x + 19, y + 18, 4, 1); ctx.fillRect(x + 23, y + 17, 1, 1); // Mouth
+            
+            // Gold Tooth
+            const tick = Math.floor(Date.now() / 100);
+            if (tick % 8 < 4) {
+                ctx.fillStyle = ['#fff', '#fff700', '#f1c40f', '#f1c40f'][tick % 4];
+                ctx.fillRect(x + 21, y + 18, 2, 1);
+            }
+        } else {
+            // Normal / Thinking
+            ctx.fillStyle = '#fff';
+            if (gameState.activePlayer === 'cpu') {
+                 ctx.fillRect(x + 13 + eyeOff, y + 9, 4, 1); ctx.fillRect(x + 23 + eyeOff, y + 9, 4, 1);
+            } else {
+                 ctx.fillRect(x + 14 + eyeOff, y + 9, 2, 2); ctx.fillRect(x + 24 + eyeOff, y + 9, 2, 2);
+            }
+        }
+
+        // Sweat (River or Nervous)
+        if (gameState.phase === 'RIVER' || gameState.dealerReaction === 'NERVOUS') {
+            const time = Date.now();
+            ctx.fillStyle = '#4dd0e1';
+            const drop1 = (time / 60) % 20; if (drop1 < 16) ctx.fillRect(x + 9, y + 7 + drop1, 1, 2);
+            const drop2 = ((time + 800) / 60) % 20; if (drop2 < 16) ctx.fillRect(x + 30, y + 7 + drop2, 1, 2);
+        }
+    }
+
+    // Hat
+    let hY = y - 5;
+    if (gameState.dealerReaction === 'SHOCK') hY -= Math.abs(Math.sin(Date.now() / 50) * 8);
+    ctx.fillStyle = gameState.folded.cpu ? '#666' : hatColor;
+    ctx.fillRect(x - 5, hY + 8, 50, 4); ctx.fillRect(x + 5, hY - 8, 30, 16);
+    ctx.fillStyle = hatBand; ctx.fillRect(x + 5, hY + 4, 30, 4);
+
+    // Label
+    let cpuLabel = "DEALER";
+    if (gameState.folded.cpu) cpuLabel = (gameState.cpuGold <= 0) ? "OUT" : "FOLD";
+    ctx.fillStyle = COLORS.white; ctx.textAlign = 'center'; ctx.font = 'bold 10px monospace';
+    ctx.fillText(cpuLabel, x - 50, y);
+}
+
+function drawDealerArms() {
+    let dx = 0, dy = 0;
+    if (gameState.dealerReaction === 'NERVOUS') { dx = (Math.random() - 0.5) * 2; dy = (Math.random() - 0.5) * 2; }
+    
+    const x = CONSTANTS.SCREEN_W / 2 - 20 + dx;
+    const y = 20 + dy;
+    const coatColor = '#967117';
+    
+    ctx.strokeStyle = gameState.folded.cpu ? COLORS.disabled : coatColor;
+    ctx.lineWidth = 7; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x + 2, y + 30);
+    
+    if (gameState.folded.cpu) {
+        ctx.lineTo(x + 10, y + 55);
+        ctx.moveTo(x + 38, y + 30); ctx.lineTo(x + 30, y + 55);
+    } else {
+        ctx.lineTo(x - 20, y + 55); ctx.lineTo(CONSTANTS.SCREEN_W/2 - 12, y + 65);
+        ctx.moveTo(x + 38, y + 30); ctx.lineTo(x + 60, y + 55); ctx.lineTo(CONSTANTS.SCREEN_W/2 + 12, y + 65);
+    }
+    ctx.stroke();
+    
+    if (!gameState.folded.cpu) {
+        ctx.fillStyle = COLORS.skin;
+        ctx.fillRect(CONSTANTS.SCREEN_W/2 - 15 + dx, y + 62, 6, 6);
+        ctx.fillRect(CONSTANTS.SCREEN_W/2 + 9 + dx, y + 62, 6, 6);
+    }
+}
+
+function drawChipGroup(group) {
+    if (group === 'dealer') {
+        drawRealStack(CONSTANTS.SCREEN_W/2 + 40, 90, gameState.cpuGold, COLORS.gold);
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'left';
+        let cpuTxt = `$${gameState.cpuGold}`; if (gameState.cpuGold <= 0) { cpuTxt = "OUT"; ctx.fillStyle = '#f00'; }
+        ctx.fillText(cpuTxt, CONSTANTS.SCREEN_W/2 + 40, 105);
+    } else if (group === 'players') {
+        drawRealStack(30, 165, gameState.p1Gold, COLORS.gold);
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.font = '10px monospace';
+        let p1Txt = `$${gameState.p1Gold}`; if (gameState.p1Gold <= 0) { p1Txt = "OUT"; ctx.fillStyle = '#f00'; }
+        ctx.fillText(p1Txt, 30, 180);
+        
+        drawRealStack(260, 165, gameState.p2Gold, COLORS.gold);
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'left';
+        let p2Txt = `$${gameState.p2Gold}`; if (gameState.p2Gold <= 0) { p2Txt = "OUT"; ctx.fillStyle = '#f00'; }
+        ctx.fillText(p2Txt, 260, 180);
+        
+        if (gameState.pot > 0) {
+            drawRealStack(CONSTANTS.SCREEN_W/2 - 10, 210, gameState.pot, COLORS.gold);
+            ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+            ctx.fillText(`POT: ${gameState.pot}`, CONSTANTS.SCREEN_W/2 + 5, 225);
+        }
+    }
+}
+
+function drawRealStack(x, y, count, color) {
+    const stackLimit = 10; const colWidth = 18;
+    const visualCount = Math.min(count, 30);
+    let cols = Math.ceil(visualCount / stackLimit);
+    const time = Date.now();
+    
+    for (let c = 0; c < cols; c++) {
+        let thisStackCount = (c === cols-1) ? visualCount % stackLimit || stackLimit : stackLimit;
+        let cx = x + (c * colWidth);
+        
+        for(let i=0; i<thisStackCount; i++) {
+            let cy = y - (i * 4);
+            if (color === COLORS.gold && assetsCached) {
+                ctx.drawImage(chipCache, cx - 10, cy - 10);
+                const shimmerSpeed = 0.0008;
+                const waveOffset = (cx * 0.05) + (i * 0.15);
+                const phase = (time * shimmerSpeed + waveOffset) % 2.5;
+                if (phase < 0.5) {
+                    ctx.globalAlpha = 0.4; ctx.fillStyle = '#fff';
+                    ctx.beginPath(); ctx.arc(cx - 5 + (phase * 10), cy - 1, 2, 0, Math.PI * 2); ctx.fill();
+                    ctx.globalAlpha = 1.0;
+                }
+            } else {
+                ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(cx + 7, cy, 7, 3, 0, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+    }
+    if (count > 30) { ctx.fillStyle = '#fff'; ctx.font = '10px monospace'; ctx.fillText("+", x+35, y); }
+}
+
+function drawCardSlots() {
+    drawCardBack(20, 40, COLORS.black); drawCardBack(18, 38, COLORS.black);
+    const startX = CONSTANTS.SCREEN_W/2 - ((5 * (CONSTANTS.CARD_W + 4)) / 2);
+    for(let i=0; i<5; i++) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.strokeRect(startX + i*(CONSTANTS.CARD_W+4), 145, CONSTANTS.CARD_W, CONSTANTS.CARD_H);
+    }
+}
+
+function drawHand(hand, who) {
+    const isFolded = gameState.folded[who];
+    hand.forEach((card, idx) => {
+        if (!card.settled) return;
+        let show = false;
+        let rotation = 0;
+        let backColor = COLORS.black;
+        let width = (who === 'cpu') ? CONSTANTS.CARD_W : CONSTANTS.P_CARD_W;
+        let height = (who === 'cpu') ? CONSTANTS.CARD_H : CONSTANTS.P_CARD_H;
+
+        if (who === 'p1') {
+            show = (gameState.phase === 'SHOWDOWN') || keys.q || gameState.revealAllHands;
+            backColor = COLORS.red;
+            rotation = (idx === 0) ? -10 : 5;
+        } else if (who === 'p2') {
+            let canPeek = keys.p && gameState.isP2Human;
+            show = (gameState.phase === 'SHOWDOWN') || canPeek || gameState.revealAllHands;
+            backColor = COLORS.blue;
+            rotation = (idx === 0) ? -5 : 10;
+        } else if (who === 'cpu') {
+            show = (gameState.phase === 'SHOWDOWN') || gameState.revealAllHands;
+            backColor = COLORS.black;
+            rotation = (idx === 0) ? -5 : 5;
+        }
+
+        if (isFolded) { backColor = '#444'; show = false; }
+        
+        drawRotatedCard(card.x, card.y, card, show, backColor, rotation, width, height);
+    });
+}
+
+function drawCommunityCards() {
+    gameState.communityCards.forEach(card => {
+        if(card.settled) drawCardFace(card.x, card.y, card);
+    });
+}
+
+function drawAnimations() {
+    gameState.animations.forEach(card => {
+        let isPlayerCard = (gameState.p1Hand.includes(card) && card.settled) || (gameState.p2Hand.includes(card) && card.settled);
+        let w = isPlayerCard ? CONSTANTS.P_CARD_W : CONSTANTS.CARD_W;
+        let h = isPlayerCard ? CONSTANTS.P_CARD_H : CONSTANTS.CARD_H;
+        
+        if (gameState.communityCards.includes(card) || card.settled) {
+            drawCardFace(card.x, card.y, card, w, h);
+        } else {
+            let backColor = COLORS.black;
+            if (gameState.p1Hand.includes(card)) backColor = COLORS.red;
+            if (gameState.p2Hand.includes(card)) backColor = COLORS.blue;
+            drawCardBack(card.x, card.y, backColor, w, h);
+        }
+    });
+}
+
+function drawRotatedCard(x, y, card, visible, backColor, angleDeg, w = CONSTANTS.CARD_W, h = CONSTANTS.CARD_H) {
+    ctx.save();
+    ctx.translate(x + w/2, y + h/2);
+    ctx.rotate(angleDeg * Math.PI / 180);
+    ctx.translate(-(x + w/2), -(y + h/2));
+    if (visible) drawCardFace(x, y, card, w, h);
+    else drawCardBack(x, y, backColor, w, h);
+    ctx.restore();
+}
+
+function drawCardFace(x, y, card, w = CONSTANTS.CARD_W, h = CONSTANTS.CARD_H) {
+    if (card.type === 'joker') { drawHoloJoker(x, y, card, w, h); return; }
+    
+    ctx.fillStyle = COLORS.white; ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(x, y, w, h);
+    
+    ctx.fillStyle = card.color;
+    ctx.font = `${Math.floor(w * 0.5)}px Courier New`;
+    ctx.textAlign = 'center';
+    ctx.fillText(card.value, x + w/2, y + Math.floor(h * 0.3));
+    
+    ctx.font = `${Math.floor(w * 0.7)}px serif`;
+    ctx.fillText(card.suit, x + w/2, y + Math.floor(h * 0.75));
+}
+
+function drawHoloJoker(x, y, card, w = CONSTANTS.CARD_W, h = CONSTANTS.CARD_H) {
+    const time = Date.now() * 0.0015;
+    const grad = ctx.createLinearGradient(x, y, x + w, y + h);
+    const hueOffset = (time * 80) % 360;
+    grad.addColorStop(0, `hsl(${hueOffset}, 85%, 65%)`);
+    grad.addColorStop(0.5, `hsl(${(hueOffset + 180) % 360}, 85%, 65%)`);
+    grad.addColorStop(1, `hsl(${hueOffset}, 85%, 65%)`);
+    
+    ctx.fillStyle = grad; ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+    
+    const cx = x + w / 2; const cy = y + h / 2;
+    
+    if (card.jokerId === 'j1') { // MIDAS (Pot of Gold)
+        ctx.fillStyle = '#4e342e'; 
+        ctx.beginPath(); ctx.arc(cx, cy + 2, 6, 0, Math.PI, false); ctx.fill(); // Pot base
+        ctx.fillRect(cx - 6, cy - 1, 12, 3); // Rim
+        // Gold coins piling up
+        ctx.fillStyle = '#ffd700'; 
+        ctx.beginPath(); ctx.arc(cx - 2, cy - 3, 2.5, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + 2, cy - 3, 2.5, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx, cy - 5, 2.5, 0, Math.PI*2); ctx.fill();
+        // Sparkle
+        ctx.fillStyle = '#fff'; ctx.fillRect(cx + 4, cy - 8, 1, 3); ctx.fillRect(cx + 3, cy - 7, 3, 1);
+    } 
+    else if (card.jokerId === 'j2') { // SEER (Mystic Eye)
+        // Outer Eye
+        ctx.fillStyle = '#eee'; 
+        ctx.beginPath(); ctx.ellipse(cx, cy, 8, 5, 0, 0, Math.PI*2); ctx.fill();
+        // Iris
+        ctx.fillStyle = '#9b59b6'; 
+        ctx.beginPath(); ctx.circle = ctx.arc(cx, cy, 3.5, 0, Math.PI*2); ctx.fill();
+        // Pupil (Slit)
+        ctx.fillStyle = '#000'; 
+        ctx.beginPath(); ctx.ellipse(cx, cy, 1, 3, 0, 0, Math.PI*2); ctx.fill();
+        // Eyelid highlight
+        ctx.strokeStyle = '#4a148c'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(cx, cy - 1, 8, 3.4, 6, false); ctx.stroke();
+    } 
+    else if (card.jokerId === 'j3') { // GIFT (Present Box)
+        // Box
+        ctx.fillStyle = '#e74c3c'; ctx.fillRect(cx - 6, cy - 4, 12, 10);
+        // Ribbon Vert
+        ctx.fillStyle = '#f1c40f'; ctx.fillRect(cx - 1.5, cy - 4, 3, 10);
+        // Ribbon Horiz
+        ctx.fillStyle = '#f1c40f'; ctx.fillRect(cx - 6, cy, 12, 2);
+        // Bow
+        ctx.fillStyle = '#f1c40f'; 
+        ctx.beginPath(); ctx.arc(cx - 3, cy - 5, 2.5, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + 3, cy - 5, 2.5, 0, Math.PI*2); ctx.fill();
+    } 
+    else if (card.jokerId === 'j4') { // CHAOS (Vortex)
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(time * 2); // Spin!
+        ctx.fillStyle = '#c0392b';
+        for(let i = 0; i < 4; i++) {
+            ctx.rotate(Math.PI / 2);
+            ctx.beginPath(); ctx.moveTo(0, 0); 
+            ctx.quadraticCurveTo(4, -4, 8, 0); 
+            ctx.quadraticCurveTo(4, 4, 0, 0); 
+            ctx.fill();
+        }
+        ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+    }
+    
+    // Sheen Effect
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    const sheenPos = (time * 100) % (w * 3.5) - w;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.beginPath();
+    ctx.moveTo(x + sheenPos, y); ctx.lineTo(x + sheenPos + 15, y);
+    ctx.lineTo(x + sheenPos - 15, y + h); ctx.lineTo(x + sheenPos - 30, y + h);
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawCardBack(x, y, color, w = CONSTANTS.CARD_W, h = CONSTANTS.CARD_H) {
+    ctx.fillStyle = '#eee'; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = color; ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+    for (let py = 2; py < h - 2; py += 2) {
+        for (let px = 2; px < w - 2; px += 2) {
+            if ((px + py) % 4 === 0) ctx.fillRect(x + px, y + py, 1, 1);
+        }
+    }
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(x, y, w, h);
+}
+
+function drawConfetti() {
+    gameState.confetti.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = Math.min(1.0, p.life);
+        ctx.fillRect(p.x, p.y, p.size, p.size);
+        ctx.globalAlpha = 1.0;
+    });
+}
+
+function drawStartScreen() {
+    // Sky
+    const grad = ctx.createLinearGradient(0, 0, 0, CONSTANTS.SCREEN_H);
+    grad.addColorStop(0, '#2b1d38'); grad.addColorStop(0.8, '#ff9933'); grad.addColorStop(1, '#4a2c17');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, CONSTANTS.SCREEN_W, CONSTANTS.SCREEN_H);
+
+    // Sun
+    const time = Date.now() / 1000;
+    const sunY = 180 + Math.sin(time * 0.5) * 5;
+    ctx.fillStyle = '#e74c3c'; ctx.beginPath(); ctx.arc(CONSTANTS.SCREEN_W / 2, sunY, 40, 0, Math.PI * 2); ctx.fill();
+
+    // Title "PIXEL"
+    ctx.save();
+    ctx.translate(CONSTANTS.SCREEN_W/2, 80);
+    ctx.fillStyle = '#f1c40f';
+    ctx.font = 'bold 48px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.rotate(Math.sin(time * 2) * 2 * Math.PI / 180);
+    ctx.fillText("PIXEL", 0, 0);
+    ctx.restore();
+    
+    // Cards
+    drawRotatedCard(CONSTANTS.SCREEN_W/2 - 30, 130, {suit:'♥', value:'7', color:COLORS.red}, true, COLORS.white, -15);
+    drawRotatedCard(CONSTANTS.SCREEN_W/2 - 10, 125, {suit:'♠', value:'A', color:COLORS.black}, true, COLORS.white, 0);
+    drawRotatedCard(CONSTANTS.SCREEN_W/2 + 10, 130, {suit:'♣', value:'7', color:COLORS.black}, true, COLORS.white, 15);
+
+    // Title "HOLD 'EM"
+    ctx.save();
+    ctx.translate(CONSTANTS.SCREEN_W/2, 200);
+    ctx.fillStyle = '#f1c40f';
+    ctx.font = 'bold 36px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.fillText("HOLD 'EM", 0, 0);
+    ctx.restore();
+
+    // Blink Text
+    if (Math.floor(time * 2) % 2 === 0) {
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
+        ctx.fillText("- CLICK TO START -", CONSTANTS.SCREEN_W/2, CONSTANTS.SCREEN_H - 20);
+    }
+}
+
+function drawInfoScreen() {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.9)'; ctx.fillRect(0, 0, CONSTANTS.SCREEN_W, CONSTANTS.SCREEN_H);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.strokeRect(10, 10, CONSTANTS.SCREEN_W - 20, CONSTANTS.SCREEN_H - 20);
+    
+    ctx.fillStyle = COLORS.gold; ctx.font = 'bold 14px monospace'; ctx.textAlign = 'center';
+    ctx.fillText("-- INFO & RULES --", CONSTANTS.SCREEN_W/2, 30);
+    
+    ctx.textAlign = 'left'; ctx.font = '10px monospace'; ctx.fillStyle = '#aaa';
+    ctx.fillText("HAND RANKINGS:", 20, 50);
+    
+    ctx.fillStyle = '#fff'; let y = 65;
+    HAND_RANKS.forEach((rank, i) => { ctx.fillText(`${i+1}. ${rank}`, 20, y); y += 12; });
+    
+    ctx.fillStyle = '#aaa'; ctx.fillText("JOKER EFFECTS:", 170, 50);
+    y = 70;
+    JOKERS.forEach(j => {
+        drawHoloJoker(170, y, { type: 'joker', jokerId: j.id, value: j.number });
+        ctx.textAlign = 'left'; ctx.fillStyle = j.color; ctx.font = 'bold 10px monospace';
+        ctx.fillText(j.name, 195, y + 10);
+        ctx.fillStyle = '#ccc'; ctx.font = '9px monospace';
+        ctx.fillText(j.desc, 195, y + 22);
+        y += 35;
+    });
+
+    // New Slots Button
+    const cx = CONSTANTS.SCREEN_W/2;
+    const btnY = 220;
+    ctx.fillStyle = '#3498db'; 
+    ctx.fillRect(cx - 50, btnY, 100, 30);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.strokeRect(cx - 50, btnY, 100, 30);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+    ctx.fillText("PLAY SLOTS", cx, btnY + 20);
+    
+    ctx.fillStyle = '#888'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+    ctx.fillText("Click elsewhere to close", CONSTANTS.SCREEN_W/2, CONSTANTS.SCREEN_H - 15);
+}
+
+function drawUI() {
+    if (gameState.message) {
+        ctx.fillStyle = COLORS.white; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+        ctx.fillText(gameState.message, CONSTANTS.SCREEN_W/2, 125);
+    }
+    if (gameState.phase === 'SHOWDOWN' && gameState.winningHandDescription) {
+        ctx.fillStyle = '#f1c40f'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+        ctx.fillText(gameState.winningHandDescription.toUpperCase(), CONSTANTS.SCREEN_W/2, 185);
+    }
+    
+    ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center';
+    
+    // P1 Label
+    ctx.fillStyle = gameState.folded.p1 ? COLORS.disabled : COLORS.red;
+    ctx.fillText(gameState.folded.p1 ? "FOLD" : "P1", 50, 265);
+    
+    // P2 Label
+    ctx.fillStyle = gameState.folded.p2 ? COLORS.disabled : COLORS.blue;
+    let p2Label = gameState.isP2Human ? "P2 (MAN)" : "P2 (CPU)";
+    if (gameState.folded.p2) p2Label = (gameState.p2Gold <= 0) ? "OUT" : "FOLD";
+    ctx.fillText(p2Label, 280, 265);
+    
+    // Active Player Indicator
+    ctx.strokeStyle = COLORS.gold; ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
+    if (gameState.activePlayer === 'p1') ctx.strokeRect(10, 195, 80, 70);
+    if (gameState.activePlayer === 'p2') ctx.strokeRect(230, 195, 80, 70);
+    if (gameState.activePlayer === 'cpu') ctx.strokeRect(CONSTANTS.SCREEN_W/2 - 25, 15, 50, 50);
+    ctx.setLineDash([]);
+}
+
+// Start
+init();
+</script>
+</body>
+</html>
